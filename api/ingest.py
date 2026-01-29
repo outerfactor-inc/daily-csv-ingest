@@ -1,7 +1,10 @@
 import os
 import json
 import requests
+import base64
 from http.server import BaseHTTPRequestHandler
+# testing csv parser
+from .csv_parser import parse_inventory_csv
 
 GRAPH = "https://graph.microsoft.com/v1.0"
 
@@ -30,6 +33,13 @@ def graph_get(token, path, params=None):
     r.raise_for_status()
     return r.json()
 
+def graph_get_attachment_bytes(token, mailbox, msg_id, att_id) -> bytes:
+    att = graph_get(token, f"/users/{mailbox}/messages/{msg_id}/attachments/{att_id}")
+    # For file attachments, Graph returns contentBytes (base64)
+    b64 = att.get("contentBytes")
+    if not b64:
+        raise ValueError("Attachment has no contentBytes (not a file attachment?)")
+    return base64.b64decode(b64)
 
 def _norm(s: str | None) -> str:
     return (s or "").strip().lower()
@@ -97,6 +107,23 @@ class handler(BaseHTTPRequestHandler):
                     chosen_atts = matching_atts
                 else:
                     chosen_atts = atts
+
+                # pick the first matched attachment (csv)
+                att0 = chosen_atts[0]  # or matching_atts[0]
+                att_id = att0["id"]
+                att_name = att0.get("name")
+                
+                csv_bytes = graph_get_attachment_bytes(token, mailbox, msg_id, att_id)
+                
+                parsed = parse_inventory_csv(csv_bytes)
+                
+                # Include summary + small preview in response (safe for testing)
+                body["csv"] = {
+                    "attachmentName": att_name,
+                    "bytes": len(csv_bytes),
+                    "summary": parsed["summary"],
+                    "preview_rows": parsed["rows"][:5],
+                }
 
                 # Found a message that matches all enabled filters
                 body = {
@@ -176,5 +203,4 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(err)
 
 
-# testing csv parser
-from .csv_parser import parse_inventory_csv
+
