@@ -94,9 +94,24 @@ class handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(out)
 
+
+        except requests.HTTPError as e:
+            details = None
+            try:
+                details = e.response.json()
+            except Exception:
+                details = e.response.text if e.response is not None else None
+
+            err = json.dumps({"ok": False, "error": str(e), "details": details}).encode("utf-8")
+            self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(err)
+
         except Exception as e:
             err = json.dumps({"ok": False, "error": str(e)}).encode("utf-8")
             self.send_response(500)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(err)
+
