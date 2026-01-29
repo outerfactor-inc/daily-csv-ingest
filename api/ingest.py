@@ -43,8 +43,7 @@ class handler(BaseHTTPRequestHandler):
             # ONLY filter by sender (Graph is reliable here)
             params = {
                 "$top": 50,
-                "$orderby": "receivedDateTime desc",
-                "$select": "id,subject,receivedDateTime,from",
+                "$select": "id,subject,receivedDateTime,from,receivedDateTime",
             }
 
             if from_filter:
@@ -52,6 +51,12 @@ class handler(BaseHTTPRequestHandler):
                 params["$filter"] = f"from/emailAddress/address eq '{safe_from}'"
 
             messages = graph_get(token, f"/users/{mailbox}/messages", params=params).get("value", [])
+            
+            messages = sorted(
+                messages,
+                key=lambda m: (m.get("receivedDateTime") or ""),
+                reverse=True,
+            )
 
             if not messages:
                 body = {"ok": True, "message": "No messages found (after sender filter)", "sender": from_filter}
