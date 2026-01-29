@@ -1,4 +1,4 @@
-import osf
+import os
 import json
 import requests
 import base64
