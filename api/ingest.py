@@ -95,21 +95,16 @@ class handler(BaseHTTPRequestHandler):
                 # 3) attachments filter (optional)
                 msg_id = msg["id"]
                 atts = graph_get(token, f"/users/{mailbox}/messages/{msg_id}/attachments").get("value", [])
-
+                
                 # If user asked for attachment name filter, require at least one match
                 if att_name_contains:
-                    matching_atts = [
-                        a for a in atts
-                        if att_name_contains in _norm(a.get("name"))
-                    ]
+                    matching_atts = [a for a in atts if att_name_contains in _norm(a.get("name"))]
                     if not matching_atts:
                         continue
                     chosen_atts = matching_atts
                 else:
                     chosen_atts = atts
-
                 
-
                 # Found a message that matches all enabled filters
                 body = {
                     "ok": True,
@@ -139,25 +134,24 @@ class handler(BaseHTTPRequestHandler):
                         for a in chosen_atts
                     ],
                 }
-
-
-
+                
+                # ---- Parse CSV (optional, for testing) ----
                 # pick the first matched attachment (csv)
-                att0 = chosen_atts[0]  # or matching_atts[0]
-                att_id = att0["id"]
-                att_name = att0.get("name")
+                if chosen_atts:
+                    att0 = chosen_atts[0]
+                    att_id = att0["id"]
+                    att_name = att0.get("name")
                 
-                csv_bytes = graph_get_attachment_bytes(token, mailbox, msg_id, att_id)
+                    csv_bytes = graph_get_attachment_bytes(token, mailbox, msg_id, att_id)
+                    parsed = parse_inventory_csv(csv_bytes)
                 
-                parsed = parse_inventory_csv(csv_bytes)
-                
-                # Include summary + small preview in response (safe for testing)
-                body["csv"] = {
-                    "attachmentName": att_name,
-                    "bytes": len(csv_bytes),
-                    "summary": parsed["summary"],
-                    "preview_rows": parsed["rows"][:5],
-                }
+                    body["csv"] = {
+                        "attachmentName": att_name,
+                        "bytes": len(csv_bytes),
+                        "summary": parsed["summary"],
+                        "preview_rows": parsed["rows"][:5],
+                    }
+
 
                 
 
