@@ -2,7 +2,6 @@ import os
 import json
 import requests
 from http.server import BaseHTTPRequestHandler
-from urllib.parse import urlencode
 
 GRAPH = "https://graph.microsoft.com/v1.0"
 
@@ -41,44 +40,53 @@ class handler(BaseHTTPRequestHandler):
             from_filter = os.environ.get("MAIL_FROM")
             subject_contains = os.environ.get("MAIL_SUBJECT_CONTAINS")
 
-            # Build an OData filter. We’ll keep it simple/robust.
-            filters = []
-            if from_filter:
-                # from/emailAddress/address eq '...'
-                filters.append(f"from/emailAddress/address eq '{from_filter}'")
-            if subject_contains:
-                # contains(subject,'...')
-                filters.append(f"contains(subject,'{subject_contains}')")
-
-            filter_str = " and ".join(filters) if filters else None
-
+            # ONLY filter by sender (Graph is reliable here)
             params = {
-                "$top": 5,
+                "$top": 50,
                 "$orderby": "receivedDateTime desc",
                 "$select": "id,subject,receivedDateTime,from",
             }
-            if filter_str:
-                params["$filter"] = filter_str
 
-            # Get recent messages from mailbox
+            if from_filter:
+                safe_from = from_filter.replace("'", "''")
+                params["$filter"] = f"from/emailAddress/address eq '{safe_from}'"
+
             messages = graph_get(token, f"/users/{mailbox}/messages", params=params).get("value", [])
-            if not messages:
-                body = {"ok": True, "message": "No matching messages found", "filter": filter_str}
-            else:
-                msg = messages[0]
-                msg_id = msg["id"]
 
-                # List attachments metadata
-                atts = graph_get(token, f"/users/{mailbox}/messages/{msg_id}/attachments").get("value", [])
-                body = {
-                    "ok": True,
-                    "pickedMessage": msg,
-                    "attachmentCount": len(atts),
-                    "attachments": [
-                        {"id": a.get("id"), "name": a.get("name"), "contentType": a.get("contentType"), "size": a.get("size")}
-                        for a in atts
-                    ],
-                }
+            if not messages:
+                body = {"ok": True, "message": "No messages found (after sender filter)", "sender": from_filter}
+            else:
+                # Apply subject filter in Python
+                picked = None
+                if subject_contains:
+                    for m in messages:
+                        if subject_contains in (m.get("subject") or ""):
+                            picked = m
+                            break
+                else:
+                    picked = messages[0]
+
+                if not picked:
+                    body = {
+                        "ok": True,
+                        "message": "No messages matched subject filter (scanned latest batch)",
+                        "sender": from_filter,
+                        "subject_contains": subject_contains,
+                        "scanned": len(messages),
+                        "subjects_preview": [m.get("subject") for m in messages[:10]],
+                    }
+                else:
+                    msg_id = picked["id"]
+                    atts = graph_get(token, f"/users/{mailbox}/messages/{msg_id}/attachments").get("value", [])
+                    body = {
+                        "ok": True,
+                        "pickedMessage": picked,
+                        "attachmentCount": len(atts),
+                        "attachments": [
+                            {"id": a.get("id"), "name": a.get("name"), "contentType": a.get("contentType"), "size": a.get("size")}
+                            for a in atts
+                        ],
+                    }
 
             out = json.dumps(body, indent=2).encode("utf-8")
             self.send_response(200)
