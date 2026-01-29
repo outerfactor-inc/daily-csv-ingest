@@ -174,3 +174,9 @@ class handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(err)
+
+
+# testing csv parser
+from .csv_parser import parse_inventory_csv
+
+result = parse_inventory_csv(csv_bytes)
