@@ -31,74 +31,129 @@ def graph_get(token, path, params=None):
     return r.json()
 
 
+def _norm(s: str | None) -> str:
+    return (s or "").strip().lower()
+
+
+def _get_addr(obj: dict, field: str) -> str:
+    """
+    Extracts email address from Graph message fields like:
+    msg["from"]["emailAddress"]["address"]
+    msg["sender"]["emailAddress"]["address"]
+    """
+    try:
+        return _norm(obj.get(field, {}).get("emailAddress", {}).get("address"))
+    except Exception:
+        return ""
+
+
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
             token = get_token()
 
-            mailbox = os.environ["MAILBOX_USER"]
-            from_filter = os.environ.get("MAIL_FROM")
-            subject_contains = os.environ.get("MAIL_SUBJECT_CONTAINS")
+            mailbox = os.environ["MAILBOX_USER"]  # required
+            subject_contains = _norm(os.environ.get("MAIL_SUBJECT_CONTAINS"))
+            from_filter = _norm(os.environ.get("MAIL_FROM"))
+            att_name_contains = _norm(os.environ.get("ATTACHMENT_NAME_CONTAINS"))
 
-            # ONLY filter by sender (Graph is reliable here)
+            # Fetch recent messages. No $filter to avoid Graph "InefficientFilter".
             params = {
-                "$top": 50,
-                "$select": "id,subject,receivedDateTime,from,receivedDateTime",
+                "$top": 100,
+                "$orderby": "receivedDateTime desc",
+                "$select": "id,subject,receivedDateTime,from,sender",
             }
 
-            if from_filter:
-                safe_from = from_filter.replace("'", "''")
-                params["$filter"] = f"from/emailAddress/address eq '{safe_from}'"
-
             messages = graph_get(token, f"/users/{mailbox}/messages", params=params).get("value", [])
-            
-            messages = sorted(
-                messages,
-                key=lambda m: (m.get("receivedDateTime") or ""),
-                reverse=True,
-            )
 
-            if not messages:
-                body = {"ok": True, "message": "No messages found (after sender filter)", "sender": from_filter}
-            else:
-                # Apply subject filter in Python
-                picked = None
-                if subject_contains:
-                    for m in messages:
-                        if subject_contains in (m.get("subject") or ""):
-                            picked = m
-                            break
+            scanned = 0
+            for msg in messages:
+                scanned += 1
+
+                subj = _norm(msg.get("subject"))
+                from_addr = _get_addr(msg, "from")
+                sender_addr = _get_addr(msg, "sender")  # sometimes differs
+
+                # 1) subject filter (optional)
+                if subject_contains and subject_contains not in subj:
+                    continue
+
+                # 2) from filter (optional) - match either from or sender
+                if from_filter and (from_filter != from_addr and from_filter != sender_addr):
+                    continue
+
+                # 3) attachments filter (optional)
+                msg_id = msg["id"]
+                atts = graph_get(token, f"/users/{mailbox}/messages/{msg_id}/attachments").get("value", [])
+
+                # If user asked for attachment name filter, require at least one match
+                if att_name_contains:
+                    matching_atts = [
+                        a for a in atts
+                        if att_name_contains in _norm(a.get("name"))
+                    ]
+                    if not matching_atts:
+                        continue
+                    chosen_atts = matching_atts
                 else:
-                    picked = messages[0]
+                    chosen_atts = atts
 
-                if not picked:
-                    body = {
-                        "ok": True,
-                        "message": "No messages matched subject filter (scanned latest batch)",
-                        "sender": from_filter,
-                        "subject_contains": subject_contains,
-                        "scanned": len(messages),
-                        "subjects_preview": [m.get("subject") for m in messages[:10]],
-                    }
-                else:
-                    msg_id = picked["id"]
-                    atts = graph_get(token, f"/users/{mailbox}/messages/{msg_id}/attachments").get("value", [])
-                    body = {
-                        "ok": True,
-                        "pickedMessage": picked,
-                        "attachmentCount": len(atts),
-                        "attachments": [
-                            {"id": a.get("id"), "name": a.get("name"), "contentType": a.get("contentType"), "size": a.get("size")}
-                            for a in atts
-                        ],
-                    }
+                # Found a message that matches all enabled filters
+                body = {
+                    "ok": True,
+                    "matched": True,
+                    "scanned": scanned,
+                    "filters": {
+                        "MAILBOX_USER": mailbox,
+                        "MAIL_SUBJECT_CONTAINS": subject_contains or None,
+                        "MAIL_FROM": from_filter or None,
+                        "ATTACHMENT_NAME_CONTAINS": att_name_contains or None,
+                    },
+                    "pickedMessage": {
+                        "id": msg.get("id"),
+                        "subject": msg.get("subject"),
+                        "receivedDateTime": msg.get("receivedDateTime"),
+                        "from": msg.get("from"),
+                        "sender": msg.get("sender"),
+                    },
+                    "attachmentCount": len(atts),
+                    "matchedAttachments": [
+                        {
+                            "id": a.get("id"),
+                            "name": a.get("name"),
+                            "contentType": a.get("contentType"),
+                            "size": a.get("size"),
+                        }
+                        for a in chosen_atts
+                    ],
+                }
 
+                out = json.dumps(body, indent=2).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(out)
+                return
+
+            # If we got here, nothing matched
+            body = {
+                "ok": True,
+                "matched": False,
+                "message": "No messages matched filters in the scanned window",
+                "scanned": len(messages),
+                "filters": {
+                    "MAILBOX_USER": mailbox,
+                    "MAIL_SUBJECT_CONTAINS": subject_contains or None,
+                    "MAIL_FROM": from_filter or None,
+                    "ATTACHMENT_NAME_CONTAINS": att_name_contains or None,
+                },
+                "subjects_preview": [m.get("subject") for m in messages[:15]],
+            }
             out = json.dumps(body, indent=2).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(out)
-
 
         except requests.HTTPError as e:
             details = None
@@ -119,4 +174,3 @@ class handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(err)
-
