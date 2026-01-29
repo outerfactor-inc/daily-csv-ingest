@@ -177,6 +177,6 @@ class handler(BaseHTTPRequestHandler):
 
 
 # testing csv parser
-from .csv_parser import parse_inventory_csv
+from .csv-parser import parse_inventory_csv
 
 result = parse_inventory_csv(csv_bytes)
