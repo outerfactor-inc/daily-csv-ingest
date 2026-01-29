@@ -1,4 +1,4 @@
-import os
+import osf
 import json
 import requests
 import base64
@@ -108,22 +108,7 @@ class handler(BaseHTTPRequestHandler):
                 else:
                     chosen_atts = atts
 
-                # pick the first matched attachment (csv)
-                att0 = chosen_atts[0]  # or matching_atts[0]
-                att_id = att0["id"]
-                att_name = att0.get("name")
                 
-                csv_bytes = graph_get_attachment_bytes(token, mailbox, msg_id, att_id)
-                
-                parsed = parse_inventory_csv(csv_bytes)
-                
-                # Include summary + small preview in response (safe for testing)
-                body["csv"] = {
-                    "attachmentName": att_name,
-                    "bytes": len(csv_bytes),
-                    "summary": parsed["summary"],
-                    "preview_rows": parsed["rows"][:5],
-                }
 
                 # Found a message that matches all enabled filters
                 body = {
@@ -154,6 +139,27 @@ class handler(BaseHTTPRequestHandler):
                         for a in chosen_atts
                     ],
                 }
+
+
+
+                # pick the first matched attachment (csv)
+                att0 = chosen_atts[0]  # or matching_atts[0]
+                att_id = att0["id"]
+                att_name = att0.get("name")
+                
+                csv_bytes = graph_get_attachment_bytes(token, mailbox, msg_id, att_id)
+                
+                parsed = parse_inventory_csv(csv_bytes)
+                
+                # Include summary + small preview in response (safe for testing)
+                body["csv"] = {
+                    "attachmentName": att_name,
+                    "bytes": len(csv_bytes),
+                    "summary": parsed["summary"],
+                    "preview_rows": parsed["rows"][:5],
+                }
+
+                
 
                 out = json.dumps(body, indent=2).encode("utf-8")
                 self.send_response(200)
