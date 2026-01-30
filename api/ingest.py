@@ -74,7 +74,8 @@ class handler(BaseHTTPRequestHandler):
             # Extract parsed CSV rows
             # ----------------------------
             parsed = snap["parsed"] or {}
-            rows = (parsed.get("rows") or [])[:limit]
+            all_rows = parsed.get("rows") or []
+            rows = all_rows if limit <= 0 else all_rows[:limit]
 
             # ----------------------------
             # Build base response payload
