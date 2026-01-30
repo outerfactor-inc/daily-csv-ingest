@@ -8,7 +8,7 @@ from .csv_parser import parse_inventory_csv
 from urllib.parse import urlparse, parse_qs
 #from .sf_auth import get_salesforce_token
 #from .inventory_upsert import upsert_inventory_row
-import traceback
+# import traceback
 
 
 GRAPH = "https://graph.microsoft.com/v1.0"
@@ -258,7 +258,7 @@ class handler(BaseHTTPRequestHandler):
             err = json.dumps({
                 "ok": False,
                 "error": str(e),
-                "trace": traceback.format_exc(),
+                # "trace": traceback.format_exc(),
             }).encode("utf-8")
             self.send_response(500)
             self.send_header("Content-Type", "application/json")
