@@ -172,6 +172,17 @@ class handler(BaseHTTPRequestHandler):
                             "Committed__c": row0["qty_committed"],
                         }
 
+                    
+                    
+                    qs = parse_qs(urlparse(self.path).query)
+
+                    #-----test instance url------
+                    sf_test = qs.get("sfTest", ["0"])[0] == "1"
+                    
+                    if sf_test:
+                        tok = get_salesforce_token()
+                        body["sf"] = {"instance_url": tok.get("instance_url")}
+
                     # -----Write 1 row---
                     do_write = qs.get("writeSF", ["0"])[0] == "1"
 
@@ -188,17 +199,7 @@ class handler(BaseHTTPRequestHandler):
                         )
 
 
-
-                    
-                    qs = parse_qs(urlparse(self.path).query)
-                    sf_test = qs.get("sfTest", ["0"])[0] == "1"
-                    
-                    if sf_test:
-                        tok = get_salesforce_token()
-                        body["sf"] = {"instance_url": tok.get("instance_url")}
-
-
-
+    
                 
 
                 out = json.dumps(body, indent=2).encode("utf-8")
