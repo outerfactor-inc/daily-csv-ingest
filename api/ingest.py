@@ -5,6 +5,7 @@ import base64
 from http.server import BaseHTTPRequestHandler
 # testing csv parser
 from .csv_parser import parse_inventory_csv
+from urllib.parse import urlparse, parse_qs
 
 GRAPH = "https://graph.microsoft.com/v1.0"
 
@@ -152,9 +153,6 @@ class handler(BaseHTTPRequestHandler):
                         "preview_rows": parsed["rows"][:5],
                     }
 
-                qs = parse_qs(urlparse(self.path).query)
-                dry_run = qs.get("dryRun", ["1"])[0] == "1"
-
                 
 
                 out = json.dumps(body, indent=2).encode("utf-8")
@@ -185,6 +183,10 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(out)
 
 
+            #-------dry run------
+            qs = parse_qs(urlparse(self.path).query)
+            dry_run = qs.get("dryRun", ["1"])[0] == "1"
+            
             if dry_run:
                 body["csv"] = {
                     "attachmentName": att_name,
