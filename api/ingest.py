@@ -18,7 +18,20 @@ from .inventory_upsert import upsert_inventory_row
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        try:
+        try:  
+            # ----------------------------
+            # Parse query string controls
+            # ----------------------------
+            # limit   : max number of CSV rows to process
+            # sfTest  : test Salesforce auth only (no writes)
+            # writeSF : allow writes to Salesforce
+            # dryRun  : safety flag to block writes even if writeSF=1
+            qs = parse_qs(urlparse(self.path).query)
+            limit = int(qs.get("limit", ["1"])[0])
+            sf_test = qs.get("sfTest", ["0"])[0] == "1"
+            do_write = qs.get("writeSF", ["0"])[0] == "1"
+            dry_run = qs.get("dryRun", ["1"])[0] == "1"
+
             #--------------------------
             # Enforce Secret Key 
             #--------------------------
@@ -34,20 +47,6 @@ class handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(out)
                 return
-
-            
-            # ----------------------------
-            # Parse query string controls
-            # ----------------------------
-            # limit   : max number of CSV rows to process
-            # sfTest  : test Salesforce auth only (no writes)
-            # writeSF : allow writes to Salesforce
-            # dryRun  : safety flag to block writes even if writeSF=1
-            qs = parse_qs(urlparse(self.path).query)
-            limit = int(qs.get("limit", ["1"])[0])
-            sf_test = qs.get("sfTest", ["0"])[0] == "1"
-            do_write = qs.get("writeSF", ["0"])[0] == "1"
-            dry_run = qs.get("dryRun", ["1"])[0] == "1"
             
 
             # ----------------------------------------------------
