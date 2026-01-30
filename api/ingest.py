@@ -144,6 +144,9 @@ class handler(BaseHTTPRequestHandler):
                 # ---- Parse CSV (optional, for testing) ----
                 # pick the first matched attachment (csv)
                 if chosen_atts:
+                    qs = parse_qs(urlparse(self.path).query)              # <-- MOVE UP
+                    limit = int(qs.get("limit", ["1"])[0])                # <-- MOVE UP
+                
                     att0 = chosen_atts[0]
                     att_id = att0["id"]
                     att_name = att0.get("name")
@@ -155,14 +158,14 @@ class handler(BaseHTTPRequestHandler):
                         "attachmentName": att_name,
                         "bytes": len(csv_bytes),
                         "summary": parsed["summary"],
-                        "preview_rows": parsed["rows"][:1],
+                        "preview_rows": parsed.get("rows", [])[:1],
                     }
-
-                    #-----preview------
-
+                
                     location_name = os.environ.get("THREE_EYE_LOCATION", "3EyeWarehouse")
-                    row0 = parsed["rows"][0] if parsed.get("rows") else None
-                    
+                
+                    rows = parsed.get("rows", [])[:limit]
+                    row0 = rows[0] if rows else None
+                
                     if row0:
                         body["sf_preview"] = {
                             "sku": row0["part_number"],
@@ -171,32 +174,52 @@ class handler(BaseHTTPRequestHandler):
                             "Available__c": row0["qty_available"],
                             "Committed__c": row0["qty_committed"],
                         }
-
-                    
-                    
-                    qs = parse_qs(urlparse(self.path).query)
-
-                    #-----test instance url------
+                
+                    # SF auth test (no writes)
                     sf_test = qs.get("sfTest", ["0"])[0] == "1"
-                    
                     if sf_test:
                         tok = get_salesforce_token()
                         body["sf"] = {"instance_url": tok.get("instance_url")}
-
-                    # -----Write 1 row---
+                
+                    # Write (explicitly gated)
                     do_write = qs.get("writeSF", ["0"])[0] == "1"
-
-                    if do_write and row0:
+                    if do_write:
                         tok = get_salesforce_token()
-                        body["sf_result"] = upsert_inventory_row(
-                            instance_url=tok["instance_url"],
-                            access_token=tok["access_token"],
-                            sku=row0["part_number"],
-                            location_name=location_name,
-                            qty_on_hand=row0["qty_on_hand"],
-                            qty_available=row0["qty_available"],
-                            qty_committed=row0["qty_committed"],
-                        )
+                        created = updated = skipped = errors = 0
+                        error_preview = []
+                
+                        for row in rows:
+                            try:
+                                r = upsert_inventory_row(
+                                    instance_url=tok["instance_url"],
+                                    access_token=tok["access_token"],
+                                    sku=row["part_number"],
+                                    location_name=location_name,
+                                    qty_on_hand=row["qty_on_hand"],
+                                    qty_available=row["qty_available"],
+                                    qty_committed=row["qty_committed"],
+                                )
+                                if r.get("action") == "created":
+                                    created += 1
+                                elif r.get("action") == "updated":
+                                    updated += 1
+                                else:
+                                    skipped += 1
+                            except Exception as e:
+                                errors += 1
+                                if len(error_preview) < 5:
+                                    error_preview.append({"sku": row.get("part_number"), "error": str(e)})
+                
+                        body["sf_batch"] = {
+                            "limit": limit,
+                            "created": created,
+                            "updated": updated,
+                            "skipped": skipped,
+                            "errors": errors,
+                            "error_preview": error_preview,
+                        }
+
+
 
 
     
