@@ -1,275 +1,118 @@
-
 import os
 import json
-import requests
-import base64
 from http.server import BaseHTTPRequestHandler
-# testing csv parser
-from .csv_parser import parse_inventory_csv
 from urllib.parse import urlparse, parse_qs
+
+from .inventory_source import get_latest_inventory_snapshot
 from .sf_auth import get_salesforce_token
 from .inventory_upsert import upsert_inventory_row
-
-
-
-GRAPH = "https://graph.microsoft.com/v1.0"
-
-
-def get_token():
-    tenant = os.environ["MS_TENANT_ID"]
-    client_id = os.environ["MS_CLIENT_ID"]
-    client_secret = os.environ["MS_CLIENT_SECRET"]
-
-    token_url = f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
-    data = {
-        "client_id": client_id,
-        "client_secret": client_secret,
-        "scope": "https://graph.microsoft.com/.default",
-        "grant_type": "client_credentials",
-    }
-    r = requests.post(token_url, data=data, timeout=30)
-    r.raise_for_status()
-    return r.json()["access_token"]
-
-
-def graph_get(token, path, params=None):
-    headers = {"Authorization": f"Bearer {token}"}
-    url = f"{GRAPH}{path}"
-    r = requests.get(url, headers=headers, params=params, timeout=30)
-    r.raise_for_status()
-    return r.json()
-
-def graph_get_attachment_bytes(token, mailbox, msg_id, att_id) -> bytes:
-    att = graph_get(token, f"/users/{mailbox}/messages/{msg_id}/attachments/{att_id}")
-    # For file attachments, Graph returns contentBytes (base64)
-    b64 = att.get("contentBytes")
-    if not b64:
-        raise ValueError("Attachment has no contentBytes (not a file attachment?)")
-    return base64.b64decode(b64)
-
-def _norm(s: str | None) -> str:
-    return (s or "").strip().lower()
-
-
-def _get_addr(obj: dict, field: str) -> str:
-    """
-    Extracts email address from Graph message fields like:
-    msg["from"]["emailAddress"]["address"]
-    msg["sender"]["emailAddress"]["address"]
-    """
-    try:
-        return _norm(obj.get(field, {}).get("emailAddress", {}).get("address"))
-    except Exception:
-        return ""
 
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
-            token = get_token()
+            qs = parse_qs(urlparse(self.path).query)
+            limit = int(qs.get("limit", ["1"])[0])
+            sf_test = qs.get("sfTest", ["0"])[0] == "1"
+            do_write = qs.get("writeSF", ["0"])[0] == "1"
+            dry_run = qs.get("dryRun", ["1"])[0] == "1"
 
-            mailbox = os.environ["MAILBOX_USER"]  # required
-            subject_contains = _norm(os.environ.get("MAIL_SUBJECT_CONTAINS"))
-            from_filter = _norm(os.environ.get("MAIL_FROM"))
-            att_name_contains = _norm(os.environ.get("ATTACHMENT_NAME_CONTAINS"))
+            snap = get_latest_inventory_snapshot()
 
-            # Fetch recent messages. No $filter to avoid Graph "InefficientFilter".
-            params = {
-                "$top": 100,
-                "$orderby": "receivedDateTime desc",
-                "$select": "id,subject,receivedDateTime,from,sender",
-            }
-
-            messages = graph_get(token, f"/users/{mailbox}/messages", params=params).get("value", [])
-
-            scanned = 0
-            for msg in messages:
-                scanned += 1
-
-                subj = _norm(msg.get("subject"))
-                from_addr = _get_addr(msg, "from")
-                sender_addr = _get_addr(msg, "sender")  # sometimes differs
-
-                # 1) subject filter (optional)
-                if subject_contains and subject_contains not in subj:
-                    continue
-
-                # 2) from filter (optional) - match either from or sender
-                if from_filter and (from_filter != from_addr and from_filter != sender_addr):
-                    continue
-
-                # 3) attachments filter (optional)
-                msg_id = msg["id"]
-                atts = graph_get(token, f"/users/{mailbox}/messages/{msg_id}/attachments").get("value", [])
-                
-                # If user asked for attachment name filter, require at least one match
-                if att_name_contains:
-                    matching_atts = [a for a in atts if att_name_contains in _norm(a.get("name"))]
-                    if not matching_atts:
-                        continue
-                    chosen_atts = matching_atts
-                else:
-                    chosen_atts = atts
-                
-                # Found a message that matches all enabled filters
-                body = {
-                    "ok": True,
-                    "matched": True,
-                    "scanned": scanned,
-                    "filters": {
-                        "MAILBOX_USER": mailbox,
-                        "MAIL_SUBJECT_CONTAINS": subject_contains or None,
-                        "MAIL_FROM": from_filter or None,
-                        "ATTACHMENT_NAME_CONTAINS": att_name_contains or None,
-                    },
-                    "pickedMessage": {
-                        "id": msg.get("id"),
-                        "subject": msg.get("subject"),
-                        "receivedDateTime": msg.get("receivedDateTime"),
-                        "from": msg.get("from"),
-                        "sender": msg.get("sender"),
-                    },
-                    "attachmentCount": len(atts),
-                    "matchedAttachments": [
-                        {
-                            "id": a.get("id"),
-                            "name": a.get("name"),
-                            "contentType": a.get("contentType"),
-                            "size": a.get("size"),
-                        }
-                        for a in chosen_atts
-                    ],
-                }
-                
-                # ---- Parse CSV (optional, for testing) ----
-                # pick the first matched attachment (csv)
-                if chosen_atts:
-                    qs = parse_qs(urlparse(self.path).query)              # <-- MOVE UP
-                    limit = int(qs.get("limit", ["1"])[0])                # <-- MOVE UP
-                
-                    att0 = chosen_atts[0]
-                    att_id = att0["id"]
-                    att_name = att0.get("name")
-                
-                    csv_bytes = graph_get_attachment_bytes(token, mailbox, msg_id, att_id)
-                    parsed = parse_inventory_csv(csv_bytes)
-                
-                    body["csv"] = {
-                        "attachmentName": att_name,
-                        "bytes": len(csv_bytes),
-                        "summary": parsed["summary"],
-                        "preview_rows": parsed.get("rows", [])[:1],
-                    }
-                
-                    location_name = os.environ.get("THREE_EYE_LOCATION", "3EyeWarehouse")
-                
-                    rows = parsed.get("rows", [])[:limit]
-                    row0 = rows[0] if rows else None
-                
-                    if row0:
-                        body["sf_preview"] = {
-                            "sku": row0["part_number"],
-                            "location": location_name,
-                            "On_Hand__c": row0["qty_on_hand"],
-                            "Available__c": row0["qty_available"],
-                            "Committed__c": row0["qty_committed"],
-                        }
-                
-                    # SF auth test (no writes)
-                    sf_test = qs.get("sfTest", ["0"])[0] == "1"
-                    if sf_test:
-                        tok = get_salesforce_token()
-                        body["sf"] = {"instance_url": tok.get("instance_url")}
-                
-                    # Write (explicitly gated)
-                    do_write = qs.get("writeSF", ["0"])[0] == "1"
-                    if do_write:
-                        tok = get_salesforce_token()
-                        created = updated = skipped = errors = 0
-                        error_preview = []
-                
-                        for row in rows:
-                            try:
-                                r = upsert_inventory_row(
-                                    instance_url=tok["instance_url"],
-                                    access_token=tok["access_token"],
-                                    sku=row["part_number"],
-                                    location_name=location_name,
-                                    qty_on_hand=row["qty_on_hand"],
-                                    qty_available=row["qty_available"],
-                                    qty_committed=row["qty_committed"],
-                                )
-                                if r.get("action") == "created":
-                                    created += 1
-                                elif r.get("action") == "updated":
-                                    updated += 1
-                                else:
-                                    skipped += 1
-                            except Exception as e:
-                                errors += 1
-                                if len(error_preview) < 5:
-                                    error_preview.append({"sku": row.get("part_number"), "error": str(e)})
-                
-                        body["sf_batch"] = {
-                            "limit": limit,
-                            "created": created,
-                            "updated": updated,
-                            "skipped": skipped,
-                            "errors": errors,
-                            "error_preview": error_preview,
-                        }
-
-
-
-
-    
-                
-
-                out = json.dumps(body, indent=2).encode("utf-8")
+            # If no matching email/csv
+            if not snap.get("matched"):
+                out = json.dumps(snap, indent=2).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
                 self.wfile.write(out)
                 return
 
-            # If we got here, nothing matched
+            parsed = snap["parsed"] or {}
+            rows = (parsed.get("rows") or [])[:limit]
+
             body = {
                 "ok": True,
-                "matched": False,
-                "message": "No messages matched filters in the scanned window",
-                "scanned": len(messages),
-                "filters": {
-                    "MAILBOX_USER": mailbox,
-                    "MAIL_SUBJECT_CONTAINS": subject_contains or None,
-                    "MAIL_FROM": from_filter or None,
-                    "ATTACHMENT_NAME_CONTAINS": att_name_contains or None,
+                "matched": True,
+                "scanned": snap.get("scanned"),
+                "filters": snap.get("filters"),
+                "pickedMessage": snap.get("pickedMessage"),
+                "attachment": snap.get("attachment"),
+                "csv": {
+                    "bytes": snap.get("csv_bytes_len"),
+                    "summary": parsed.get("summary"),
+                    "preview_rows": rows[:1],
                 },
-                "subjects_preview": [m.get("subject") for m in messages[:15]],
             }
+
+            location_name = os.environ.get("THREE_EYE_LOCATION", "3EyeWarehouse")
+
+            row0 = rows[0] if rows else None
+            if row0:
+                body["sf_preview"] = {
+                    "sku": row0["part_number"],
+                    "location": location_name,
+                    "On_Hand__c": row0["qty_on_hand"],
+                    "Available__c": row0["qty_available"],
+                    "Committed__c": row0["qty_committed"],
+                }
+
+            # SF auth test (no write)
+            if sf_test:
+                tok = get_salesforce_token()
+                body["sf"] = {"instance_url": tok.get("instance_url")}
+
+            # Write (explicitly gated)
+            if do_write and not dry_run:
+                tok = get_salesforce_token()
+                created = updated = skipped = errors = 0
+                error_preview = []
+
+                for row in rows:
+                    try:
+                        r = upsert_inventory_row(
+                            instance_url=tok["instance_url"],
+                            access_token=tok["access_token"],
+                            sku=row["part_number"],
+                            location_name=location_name,
+                            qty_on_hand=row["qty_on_hand"],
+                            qty_available=row["qty_available"],
+                            qty_committed=row["qty_committed"],
+                        )
+                        if r.get("action") == "created":
+                            created += 1
+                        elif r.get("action") == "updated":
+                            updated += 1
+                        else:
+                            skipped += 1
+                    except Exception as e:
+                        errors += 1
+                        if len(error_preview) < 5:
+                            error_preview.append({"sku": row.get("part_number"), "error": str(e)})
+
+                body["sf_batch"] = {
+                    "limit": limit,
+                    "created": created,
+                    "updated": updated,
+                    "skipped": skipped,
+                    "errors": errors,
+                    "error_preview": error_preview,
+                }
+            else:
+                body["sf_batch"] = {
+                    "limit": limit,
+                    "note": "No writes performed (set writeSF=1&dryRun=0 to write).",
+                }
+
             out = json.dumps(body, indent=2).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(out)
-                
-
-        except requests.HTTPError as e:
-            details = None
-            try:
-                details = e.response.json()
-            except Exception:
-                details = e.response.text if e.response is not None else None
-
-            err = json.dumps({"ok": False, "error": str(e), "details": details}).encode("utf-8")
-            self.send_response(500)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(err)
 
         except Exception as e:
-            err = json.dumps({"ok": False, "error": str(e)}).encode("utf-8")
+            err = json.dumps({"ok": False, "error": str(e)}, indent=2).encode("utf-8")
             self.send_response(500)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(err)
-
