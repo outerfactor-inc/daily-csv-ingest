@@ -155,6 +155,18 @@ class handler(BaseHTTPRequestHandler):
                         "summary": parsed["summary"],
                         "preview_rows": parsed["rows"][:1],
                     }
+
+                    location_name = os.environ.get("THREE_EYE_LOCATION", "3EyeWarehouse")
+                    row0 = parsed["rows"][0] if parsed.get("rows") else None
+                    
+                    if row0:
+                        body["sf_preview"] = {
+                            "sku": row0["part_number"],
+                            "location": location_name,
+                            "On_Hand__c": row0["qty_on_hand"],
+                            "Available__c": row0["qty_available"],
+                            "Committed__c": row0["qty_committed"],
+                        }
                     qs = parse_qs(urlparse(self.path).query)
                     sf_test = qs.get("sfTest", ["0"])[0] == "1"
                     
