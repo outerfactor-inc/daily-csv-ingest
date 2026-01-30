@@ -140,22 +140,22 @@ class handler(BaseHTTPRequestHandler):
                     ],
                 }
                 
-                # ---- Parse CSV (optional, for testing) ----
-                # pick the first matched attachment (csv)
-                if chosen_atts:
-                    att0 = chosen_atts[0]
-                    att_id = att0["id"]
-                    att_name = att0.get("name")
+                # # ---- Parse CSV (optional, for testing) ----
+                # # pick the first matched attachment (csv)
+                # if chosen_atts:
+                #     att0 = chosen_atts[0]
+                #     att_id = att0["id"]
+                #     att_name = att0.get("name")
                 
-                    csv_bytes = graph_get_attachment_bytes(token, mailbox, msg_id, att_id)
-                    parsed = parse_inventory_csv(csv_bytes)
+                #     csv_bytes = graph_get_attachment_bytes(token, mailbox, msg_id, att_id)
+                #     parsed = parse_inventory_csv(csv_bytes)
                 
-                    body["csv"] = {
-                        "attachmentName": att_name,
-                        "bytes": len(csv_bytes),
-                        "summary": parsed["summary"],
-                        "preview_rows": parsed["rows"][:1],
-                    }
+                #     body["csv"] = {
+                #         "attachmentName": att_name,
+                #         "bytes": len(csv_bytes),
+                #         "summary": parsed["summary"],
+                #         "preview_rows": parsed["rows"][:1],
+                #     }
 
 
                 #--------new-----
