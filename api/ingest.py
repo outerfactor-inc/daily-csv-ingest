@@ -7,7 +7,6 @@ from http.server import BaseHTTPRequestHandler
 from .csv_parser import parse_inventory_csv
 from urllib.parse import urlparse, parse_qs
 from .sf_auth import get_salesforce_token
-from .sf_auth import get_salesforce_token
 from .inventory_upsert import upsert_inventory_row
 
 GRAPH = "https://graph.microsoft.com/v1.0"
@@ -156,37 +155,59 @@ class handler(BaseHTTPRequestHandler):
                         "preview_rows": parsed["rows"][:1],
                     }
 
-                #----SF------
-                row0 = parsed["rows"][0]
-                location_name = os.environ.get("THREE_EYE_LOCATION", "3EyeWarehouse")
+
+                #--------new-----
+                # ---- Parse CSV (optional, for testing) ----
+                if chosen_atts:
+                    att0 = chosen_atts[0]
+                    att_id = att0["id"]
+                    att_name = att0.get("name")
                 
-                # Always show what we'd send
-                body["sf_preview"] = {
-                    "sku": row0["part_number"],
-                    "location": location_name,
-                    "On_Hand__c": row0["qty_on_hand"],
-                    "Available__c": row0["qty_available"],
-                    "Committed__c": row0["qty_committed"],
-                }
+                    csv_bytes = graph_get_attachment_bytes(token, mailbox, msg_id, att_id)
+                    parsed = parse_inventory_csv(csv_bytes)
                 
-                # Gate the actual write with a querystring flag
-                qs = parse_qs(urlparse(self.path).query)
-                do_write = qs.get("writeSF", ["0"])[0] == "1"
+                    body["csv"] = {
+                        "attachmentName": att_name,
+                        "bytes": len(csv_bytes),
+                        "summary": parsed["summary"],
+                        "preview_rows": parsed["rows"][:1],
+                    }
                 
-                if do_write:
-                    tok = get_salesforce_token()
-                    instance_url = tok["instance_url"]
-                    access_token = tok["access_token"]
+                    # ---- SF (only if we actually got at least 1 row) ----
+                    if parsed.get("rows"):
+                        row0 = parsed["rows"][0]
+                        location_name = os.environ.get("THREE_EYE_LOCATION", "3EyeWarehouse")
                 
-                    body["sf_result"] = upsert_inventory_row(
-                        instance_url=instance_url,
-                        access_token=access_token,
-                        sku=row0["part_number"],
-                        location_name=location_name,
-                        qty_on_hand=row0["qty_on_hand"],
-                        qty_available=row0["qty_available"],
-                        qty_committed=row0["qty_committed"],
-                    )
+                        body["sf_preview"] = {
+                            "sku": row0.get("part_number"),
+                            "location": location_name,
+                            "On_Hand__c": row0.get("qty_on_hand"),
+                            "Available__c": row0.get("qty_available"),
+                            "Committed__c": row0.get("qty_committed"),
+                        }
+                
+                        qs = parse_qs(urlparse(self.path).query)
+                        do_write = qs.get("writeSF", ["0"])[0] == "1"
+                
+                        if do_write:
+                            tok = get_salesforce_token()
+                            instance_url = tok["instance_url"]
+                            access_token = tok["access_token"]
+                
+                            body["sf_result"] = upsert_inventory_row(
+                                instance_url=instance_url,
+                                access_token=access_token,
+                                sku=row0["part_number"],
+                                location_name=location_name,
+                                qty_on_hand=row0["qty_on_hand"],
+                                qty_available=row0["qty_available"],
+                                qty_committed=row0["qty_committed"],
+                            )
+                    else:
+                        body["sf_preview_error"] = "CSV parsed but contained zero data rows"
+                else:
+                    body["csv_error"] = "No attachments matched attachment filter"
+
 
                 
 
