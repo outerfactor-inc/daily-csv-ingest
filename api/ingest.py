@@ -7,6 +7,8 @@ from http.server import BaseHTTPRequestHandler
 from .csv_parser import parse_inventory_csv
 from urllib.parse import urlparse, parse_qs
 from .sf_auth import get_salesforce_token
+from .sf_auth import get_salesforce_token
+from .inventory_upsert import upsert_inventory_row
 
 GRAPH = "https://graph.microsoft.com/v1.0"
 
@@ -153,18 +155,39 @@ class handler(BaseHTTPRequestHandler):
                         "summary": parsed["summary"],
                         "preview_rows": parsed["rows"][:1],
                     }
-                    
-                # ---- Salesforce auth smoke test (optional) ----
-                qs = parse_qs(urlparse(self.path).query)
-                sf_test = qs.get("sfTest", ["0"])[0] == "1"
+
+                #----SF------
+                row0 = parsed["rows"][0]
+                location_name = os.environ.get("THREE_EYE_LOCATION", "3EyeWarehouse")
                 
-                if sf_test:
-                    sf_tok = get_salesforce_token()
-                    body["sf"] = {
-                        "instance_url": sf_tok.get("instance_url"),
-                        "issued_at": sf_tok.get("issued_at"),
-                        # DON'T return the access token in responses
-                    }
+                # Always show what we'd send
+                body["sf_preview"] = {
+                    "sku": row0["part_number"],
+                    "location": location_name,
+                    "On_Hand__c": row0["qty_on_hand"],
+                    "Available__c": row0["qty_available"],
+                    "Committed__c": row0["qty_committed"],
+                }
+                
+                # Gate the actual write with a querystring flag
+                qs = parse_qs(urlparse(self.path).query)
+                do_write = qs.get("writeSF", ["0"])[0] == "1"
+                
+                if do_write:
+                    tok = get_salesforce_token()
+                    instance_url = tok["instance_url"]
+                    access_token = tok["access_token"]
+                
+                    body["sf_result"] = upsert_inventory_row(
+                        instance_url=instance_url,
+                        access_token=access_token,
+                        sku=row0["part_number"],
+                        location_name=location_name,
+                        qty_on_hand=row0["qty_on_hand"],
+                        qty_available=row0["qty_available"],
+                        qty_committed=row0["qty_committed"],
+                    )
+
                 
 
                 out = json.dumps(body, indent=2).encode("utf-8")
