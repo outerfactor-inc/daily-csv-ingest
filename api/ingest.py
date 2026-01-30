@@ -48,9 +48,7 @@ class handler(BaseHTTPRequestHandler):
                 self.wfile.write(out)
                 return
 
-            ua = self.headers.get("User-Agent", "")
-            if "vercel-cron" not in ua and not qs.get("debug"):
-                raise Exception("Forbidden")
+            
             
 
             # ----------------------------------------------------
