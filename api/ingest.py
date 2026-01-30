@@ -1,3 +1,4 @@
+
 import os
 import json
 import requests
@@ -6,10 +7,6 @@ from http.server import BaseHTTPRequestHandler
 # testing csv parser
 from .csv_parser import parse_inventory_csv
 from urllib.parse import urlparse, parse_qs
-#from .sf_auth import get_salesforce_token
-#from .inventory_upsert import upsert_inventory_row
-# import traceback
-
 
 GRAPH = "https://graph.microsoft.com/v1.0"
 
@@ -140,26 +137,8 @@ class handler(BaseHTTPRequestHandler):
                     ],
                 }
                 
-                # # ---- Parse CSV (optional, for testing) ----
-                # # pick the first matched attachment (csv)
-                # if chosen_atts:
-                #     att0 = chosen_atts[0]
-                #     att_id = att0["id"]
-                #     att_name = att0.get("name")
-                
-                #     csv_bytes = graph_get_attachment_bytes(token, mailbox, msg_id, att_id)
-                #     parsed = parse_inventory_csv(csv_bytes)
-                
-                #     body["csv"] = {
-                #         "attachmentName": att_name,
-                #         "bytes": len(csv_bytes),
-                #         "summary": parsed["summary"],
-                #         "preview_rows": parsed["rows"][:1],
-                #     }
-
-
-                #--------new-----
                 # ---- Parse CSV (optional, for testing) ----
+                # pick the first matched attachment (csv)
                 if chosen_atts:
                     att0 = chosen_atts[0]
                     att_id = att0["id"]
@@ -174,42 +153,6 @@ class handler(BaseHTTPRequestHandler):
                         "summary": parsed["summary"],
                         "preview_rows": parsed["rows"][:1],
                     }
-                
-                    # ---- SF (only if we actually got at least 1 row) ----
-                    if parsed.get("rows"):
-                        row0 = parsed["rows"][0]
-                        location_name = os.environ.get("THREE_EYE_LOCATION", "3EyeWarehouse")
-                
-                        body["sf_preview"] = {
-                            "sku": row0.get("part_number"),
-                            "location": location_name,
-                            "On_Hand__c": row0.get("qty_on_hand"),
-                            "Available__c": row0.get("qty_available"),
-                            "Committed__c": row0.get("qty_committed"),
-                        }
-                
-                        qs = parse_qs(urlparse(self.path).query)
-                        do_write = qs.get("writeSF", ["0"])[0] == "1"
-                
-                        if do_write:
-                            #tok = get_salesforce_token()
-                            # instance_url = tok["instance_url"]
-                            # access_token = tok["access_token"]
-                
-                            # body["sf_result"] = upsert_inventory_row(
-                            #     instance_url=instance_url,
-                            #     access_token=access_token,
-                            #     sku=row0["part_number"],
-                            #     location_name=location_name,
-                            #     qty_on_hand=row0["qty_on_hand"],
-                            #     qty_available=row0["qty_available"],
-                            #     qty_committed=row0["qty_committed"],
-                            # )
-                    else:
-                        body["sf_preview_error"] = "CSV parsed but contained zero data rows"
-                else:
-                    body["csv_error"] = "No attachments matched attachment filter"
-
 
                 
 
@@ -255,16 +198,9 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(err)
 
         except Exception as e:
-            err = json.dumps({
-                "ok": False,
-                "error": str(e),
-                # "trace": traceback.format_exc(),
-            }).encode("utf-8")
+            err = json.dumps({"ok": False, "error": str(e)}).encode("utf-8")
             self.send_response(500)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(err)
-
-
-
 
