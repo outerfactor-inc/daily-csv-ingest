@@ -27,7 +27,7 @@ class handler(BaseHTTPRequestHandler):
             # writeSF : allow writes to Salesforce
             # dryRun  : safety flag to block writes even if writeSF=1
             qs = parse_qs(urlparse(self.path).query)
-            limit = int(qs.get("limit", ["1"])[0])
+            limit = int(qs.get("limit", ["0"])[0])
             sf_test = qs.get("sfTest", ["0"])[0] == "1"
             do_write = qs.get("writeSF", ["0"])[0] == "1"
             dry_run = qs.get("dryRun", ["1"])[0] == "1"
