@@ -6,8 +6,8 @@ from http.server import BaseHTTPRequestHandler
 # testing csv parser
 from .csv_parser import parse_inventory_csv
 from urllib.parse import urlparse, parse_qs
-from .sf_auth import get_salesforce_token
-from .inventory_upsert import upsert_inventory_row
+#from .sf_auth import get_salesforce_token
+#from .inventory_upsert import upsert_inventory_row
 import traceback
 
 
@@ -192,19 +192,19 @@ class handler(BaseHTTPRequestHandler):
                         do_write = qs.get("writeSF", ["0"])[0] == "1"
                 
                         if do_write:
-                            tok = get_salesforce_token()
-                            instance_url = tok["instance_url"]
-                            access_token = tok["access_token"]
+                            #tok = get_salesforce_token()
+                            # instance_url = tok["instance_url"]
+                            # access_token = tok["access_token"]
                 
-                            body["sf_result"] = upsert_inventory_row(
-                                instance_url=instance_url,
-                                access_token=access_token,
-                                sku=row0["part_number"],
-                                location_name=location_name,
-                                qty_on_hand=row0["qty_on_hand"],
-                                qty_available=row0["qty_available"],
-                                qty_committed=row0["qty_committed"],
-                            )
+                            # body["sf_result"] = upsert_inventory_row(
+                            #     instance_url=instance_url,
+                            #     access_token=access_token,
+                            #     sku=row0["part_number"],
+                            #     location_name=location_name,
+                            #     qty_on_hand=row0["qty_on_hand"],
+                            #     qty_available=row0["qty_available"],
+                            #     qty_committed=row0["qty_committed"],
+                            # )
                     else:
                         body["sf_preview_error"] = "CSV parsed but contained zero data rows"
                 else:
