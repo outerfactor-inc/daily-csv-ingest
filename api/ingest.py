@@ -19,6 +19,22 @@ from .inventory_upsert import upsert_inventory_row
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
+            #--------------------------
+            # Enforce Secret Key 
+            #--------------------------
+            secret = os.environ.get("INGEST_SECRET", "")
+            key = qs.get("key", [""])[0]
+            
+            # If a secret is configured, require it for any request.
+            # (You can scope this to writes only, but simplest is require always.)
+            if secret and key != secret:
+                out = json.dumps({"ok": False, "error": "Unauthorized"}).encode("utf-8")
+                self.send_response(401)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(out)
+                return
+
             
             # ----------------------------
             # Parse query string controls
