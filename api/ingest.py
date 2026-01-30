@@ -8,6 +8,8 @@ from http.server import BaseHTTPRequestHandler
 from .csv_parser import parse_inventory_csv
 from urllib.parse import urlparse, parse_qs
 from .sf_auth import get_salesforce_token
+from .inventory_upsert import upsert_inventory_row
+
 
 
 GRAPH = "https://graph.microsoft.com/v1.0"
@@ -156,6 +158,8 @@ class handler(BaseHTTPRequestHandler):
                         "preview_rows": parsed["rows"][:1],
                     }
 
+                    #-----preview------
+
                     location_name = os.environ.get("THREE_EYE_LOCATION", "3EyeWarehouse")
                     row0 = parsed["rows"][0] if parsed.get("rows") else None
                     
@@ -167,6 +171,25 @@ class handler(BaseHTTPRequestHandler):
                             "Available__c": row0["qty_available"],
                             "Committed__c": row0["qty_committed"],
                         }
+
+                    # -----Write 1 row---
+                    do_write = qs.get("writeSF", ["0"])[0] == "1"
+
+                    if do_write and row0:
+                        tok = get_salesforce_token()
+                        body["sf_result"] = upsert_inventory_row(
+                            instance_url=tok["instance_url"],
+                            access_token=tok["access_token"],
+                            sku=row0["part_number"],
+                            location_name=location_name,
+                            qty_on_hand=row0["qty_on_hand"],
+                            qty_available=row0["qty_available"],
+                            qty_committed=row0["qty_committed"],
+                        )
+
+
+
+                    
                     qs = parse_qs(urlparse(self.path).query)
                     sf_test = qs.get("sfTest", ["0"])[0] == "1"
                     
