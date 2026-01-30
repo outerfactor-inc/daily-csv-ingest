@@ -1,8 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/ingest?key=283f6bac0fadd2e0b8a4e0960ff98d183f4ed22527ad34e7ac12aeacf0b8be35&writeSF=1&dryRun=0&limit=74",
-      "schedule": "5 20 * * *"
+      "path": "/api/ingest?key=283f6bac0fadd2e0b8a4e0960ff98d183f4ed22527ad34e7ac12aeacf0b8be35&writeSF=1&dryRun=0",
+      "schedule": "15 20 * * *"
     },
     {
       "path": "/api/ingest?key=283f6bac0fadd2e0b8a4e0960ff98d183f4ed22527ad34e7ac12aeacf0b8be35&writeSF=1&dryRun=0",
