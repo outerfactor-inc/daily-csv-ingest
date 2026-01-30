@@ -6,6 +6,7 @@ from http.server import BaseHTTPRequestHandler
 # testing csv parser
 from .csv_parser import parse_inventory_csv
 from urllib.parse import urlparse, parse_qs
+from .sf_auth import get_salesforce_token
 
 GRAPH = "https://graph.microsoft.com/v1.0"
 
@@ -152,7 +153,18 @@ class handler(BaseHTTPRequestHandler):
                         "summary": parsed["summary"],
                         "preview_rows": parsed["rows"][:1],
                     }
-
+                    
+                # ---- Salesforce auth smoke test (optional) ----
+                qs = parse_qs(urlparse(self.path).query)
+                sf_test = qs.get("sfTest", ["0"])[0] == "1"
+                
+                if sf_test:
+                    sf_tok = get_salesforce_token()
+                    body["sf"] = {
+                        "instance_url": sf_tok.get("instance_url"),
+                        "issued_at": sf_tok.get("issued_at"),
+                        # DON'T return the access token in responses
+                    }
                 
 
                 out = json.dumps(body, indent=2).encode("utf-8")
