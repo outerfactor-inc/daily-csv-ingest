@@ -150,7 +150,7 @@ class handler(BaseHTTPRequestHandler):
                         "attachmentName": att_name,
                         "bytes": len(csv_bytes),
                         "summary": parsed["summary"],
-                        "preview_rows": parsed["rows"][:5],
+                        "preview_rows": parsed["rows"][:1],
                     }
 
                 
@@ -181,25 +181,6 @@ class handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(out)
-
-
-            #-------dry run------
-            qs = parse_qs(urlparse(self.path).query)
-            dry_run = qs.get("dryRun", ["1"])[0] == "1"
-            
-            if dry_run:
-                body["csv"] = {
-                    "attachmentName": att_name,
-                    "bytes": len(csv_bytes),
-                    "summary": parsed["summary"],
-                    "preview_rows": parsed["rows"][:5],
-                }
-            else:
-                body["csv"] = {
-                    "attachmentName": att_name,
-                    "bytes": len(csv_bytes),
-                    "summary": parsed["summary"],
-                }
                 
 
         except requests.HTTPError as e:
