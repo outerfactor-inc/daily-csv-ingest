@@ -7,6 +7,8 @@ from http.server import BaseHTTPRequestHandler
 # testing csv parser
 from .csv_parser import parse_inventory_csv
 from urllib.parse import urlparse, parse_qs
+from .sf_auth import get_salesforce_token
+
 
 GRAPH = "https://graph.microsoft.com/v1.0"
 
@@ -153,6 +155,14 @@ class handler(BaseHTTPRequestHandler):
                         "summary": parsed["summary"],
                         "preview_rows": parsed["rows"][:1],
                     }
+                    qs = parse_qs(urlparse(self.path).query)
+                    sf_test = qs.get("sfTest", ["0"])[0] == "1"
+                    
+                    if sf_test:
+                        tok = get_salesforce_token()
+                        body["sf"] = {"instance_url": tok.get("instance_url")}
+
+
 
                 
 
