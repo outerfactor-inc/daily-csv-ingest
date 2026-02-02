@@ -1,44 +1,44 @@
-import csv
-import io
-from typing import Dict, Any, List
+import json
+from http.server import BaseHTTPRequestHandler
+
+from api.sell_through.three_eye.source import get_latest_csv_snapshot
+from api.sell_through.three_eye.csv_parser import parse_sell_through_3e_csv
 
 
-def parse_sell_through_csv(csv_bytes: bytes) -> Dict[str, Any]:
-    text = csv_bytes.decode("utf-8", errors="replace")
-    f = io.StringIO(text)
 
-    reader = csv.DictReader(f)
-    rows: List[Dict[str, Any]] = []
-    skipped = 0
-
-    for raw in reader:
+class handler(BaseHTTPRequestHandler):
+    def do_GET(self):
         try:
-            txn = (raw.get("Transaction Number") or "").strip()
-            sku = (raw.get("Part Number") or "").strip()
+            snap = get_latest_csv_snapshot()
+            csv_bytes = snap.get("csv_bytes")
 
-            if not txn or not sku:
-                skipped += 1
-                continue
+            if not csv_bytes:
+                raise Exception("No CSV bytes found")
 
-            qty = int(raw.get("Quantity", 0))
-            unit_cost = float(raw.get("Unit Cost", 0))
-            ext_cost = qty * unit_cost
+            parsed = parse_sell_through_3e_csv(csv_bytes)
 
-            rows.append({
-                "transaction_number": txn,
-                "sku": sku,
-                "quantity": qty,
-                "unit_cost": unit_cost,
-                "extended_cost": ext_cost,
-            })
-        except Exception:
-            skipped += 1
 
-    return {
-        "rows": rows,
-        "summary": {
-            "total": len(rows) + skipped,
-            "kept": len(rows),
-            "skipped": skipped,
-        }
-    }
+            out = json.dumps(
+                {
+                    "ok": True,
+                    "summary": parsed["summary"],
+                    "preview": parsed["rows"][:3],
+                },
+                indent=2
+            ).encode("utf-8")
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(out)
+
+        except Exception as e:
+            out = json.dumps(
+                {"ok": False, "error": str(e)},
+                indent=2
+            ).encode("utf-8")
+
+            self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(out)
