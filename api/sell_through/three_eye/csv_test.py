@@ -1,44 +1,85 @@
 import json
 from http.server import BaseHTTPRequestHandler
+from urllib.parse import urlparse, parse_qs
 
 from api.sell_through.three_eye.source import get_latest_csv_snapshot
-from api.sell_through.three_eye.csv_parser import parse_sell_through_3e_csv
+from api.inventory.csv_parser import parse_inventory_csv  # <-- adjust if your parser lives elsewhere
 
+
+# These are the minimum keys sf_upsert.py expects to exist in each row
+REQUIRED_KEYS = [
+    "transaction_number",
+    "part_number",
+    "quantity",
+    "unit_cost",
+    "extended_cost",
+]
+
+# Optional but used for parent mapping (nice to confirm)
+PARENT_KEYS = [
+    "ship_date",
+    "purchase_order",
+    "bill_to_customer_name",
+    "billing_city",
+    "billing_state_province",
+    "shipping_address",
+    "ship_to_name",
+    "shipping_city",
+    "shipping_state_province",
+    "shipping_zip",
+    "3eye_customer",
+    "3eye_customer_id",
+    "end_user",
+    "end_user_id",
+]
 
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
+            qs = parse_qs(urlparse(self.path).query)
+            preview = int(qs.get("preview", ["3"])[0])  # how many rows to show
+
             snap = get_latest_csv_snapshot()
-            csv_bytes = snap.get("csv_bytes")
+            if not snap.get("matched"):
+                out = json.dumps({"ok": True, "matched": False, "snap": snap}, indent=2).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(out)
+                return
 
-            if not csv_bytes:
-                raise Exception("No CSV bytes found")
+            csv_bytes = snap["csv_bytes"]
+            parsed = parse_inventory_csv(csv_bytes)  # your parser already normalizes headers
 
-            parsed = parse_sell_through_3e_csv(csv_bytes)
+            rows = parsed.get("rows") or []
+            row0 = rows[0] if rows else {}
 
+            missing_required = [k for k in REQUIRED_KEYS if k not in row0]
+            missing_parent = [k for k in PARENT_KEYS if k not in row0]
 
-            out = json.dumps(
-                {
-                    "ok": True,
-                    "summary": parsed["summary"],
-                    "preview": parsed["rows"][:3],
-                },
-                indent=2
-            ).encode("utf-8")
+            body = {
+                "ok": True,
+                "matched": True,
+                "attachment": snap.get("attachment"),
+                "csv_bytes_len": snap.get("csv_bytes_len"),
+                "summary": parsed.get("summary"),
+                "row_count": len(rows),
+                "required_keys_missing": missing_required,
+                "parent_keys_missing": missing_parent,
+                "row0_keys": sorted(list(row0.keys())) if row0 else [],
+                "preview_rows": rows[:preview],
+            }
 
+            out = json.dumps(body, indent=2).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(out)
 
         except Exception as e:
-            out = json.dumps(
-                {"ok": False, "error": str(e)},
-                indent=2
-            ).encode("utf-8")
-
+            err = json.dumps({"ok": False, "error": str(e)}, indent=2).encode("utf-8")
             self.send_response(500)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(out)
+            self.wfile.write(err)
