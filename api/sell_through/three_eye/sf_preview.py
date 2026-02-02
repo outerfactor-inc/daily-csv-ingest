@@ -78,8 +78,13 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(out)
 
         except Exception as e:
-            out = json.dumps({"ok": False, "error": str(e)}, indent=2).encode("utf-8")
+            import traceback
+            out = json.dumps(
+                {"ok": False, "error": str(e), "trace": traceback.format_exc()},
+                indent=2
+            ).encode("utf-8")
             self.send_response(500)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(out)
+
