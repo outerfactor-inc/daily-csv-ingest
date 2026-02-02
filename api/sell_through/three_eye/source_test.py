@@ -1,15 +1,18 @@
 import json
 from http.server import BaseHTTPRequestHandler
 
-from ...shared.graph_mail_base import get_ms_token
-from .email_filter import find_latest_sell_through_email
+from .source import get_latest_csv_snapshot
 
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
-            token = get_ms_token()
-            snap = find_latest_sell_through_email(token)
+            snap = get_latest_csv_snapshot()
+
+            # Do NOT return the raw csv bytes in JSON
+            if "csv_bytes" in snap:
+                snap["csv_bytes_len"] = len(snap["csv_bytes"])
+                del snap["csv_bytes"]
 
             out = json.dumps({"ok": True, "snap": snap}, indent=2).encode("utf-8")
             self.send_response(200)

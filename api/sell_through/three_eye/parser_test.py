@@ -2,8 +2,8 @@ import json
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
-from .source import get_latest_csv_snapshot
-from .csv_parser import parse_sell_through_csv_3e
+from api.sell_through.three_eye.source import get_latest_csv_snapshot
+from api.sell_through.three_eye.csv_parser import parse_sell_through_csv_3e
 
 
 class handler(BaseHTTPRequestHandler):
