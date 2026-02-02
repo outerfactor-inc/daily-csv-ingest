@@ -1,4 +1,4 @@
-from .sf_client import sf_query, sf_create, sf_update
+from shared.sf_client import sf_query, sf_create, sf_update
 
 def upsert_inventory_row(instance_url: str, access_token: str, sku: str, location_name: str,
                          qty_on_hand: int, qty_available: int, qty_committed: int):

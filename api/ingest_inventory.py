@@ -7,13 +7,13 @@ from urllib.parse import urlparse, parse_qs
 # - finding the latest matching email
 # - downloading the CSV
 # - parsing it into typed rows
-from .inventory_source import get_latest_inventory_snapshot
+from inventory.inventory_source import get_latest_inventory_snapshot
 
 # Handles Salesforce JWT auth
-from .sf_auth import get_salesforce_token
+from shared.sf_auth import get_salesforce_token
 
 # Upserts a single Inventory__c row in Salesforce
-from .inventory_upsert import upsert_inventory_row
+from inventory.inventory_upsert import upsert_inventory_row
 
 
 class handler(BaseHTTPRequestHandler):
