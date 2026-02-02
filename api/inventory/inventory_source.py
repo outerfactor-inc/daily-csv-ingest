@@ -1,5 +1,5 @@
-from shared.graph_mail import find_latest_matching_csv_attachment
-from .csv_parser import parse_inventory_csv
+from api.shared.graph_mail import find_latest_matching_csv_attachment
+from api.inventory.csv_parser import parse_inventory_csv
 
 
 def get_latest_inventory_snapshot():
