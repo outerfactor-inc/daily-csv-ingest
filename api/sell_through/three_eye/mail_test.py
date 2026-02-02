@@ -1,8 +1,8 @@
 import json
 from http.server import BaseHTTPRequestHandler
 
-from ...shared.graph_mail_base import get_ms_token
-from .email_filter import find_latest_sell_through_email
+from api.shared.graph_mail_base import get_ms_token
+from api.sell_through.three_eye.email_filter import find_latest_sell_through_email
 
 
 class handler(BaseHTTPRequestHandler):

@@ -1,7 +1,7 @@
 import json
 from http.server import BaseHTTPRequestHandler
 
-from .source import get_latest_csv_snapshot
+from api.sell_through.three_eye.source import get_latest_csv_snapshot
 
 
 class handler(BaseHTTPRequestHandler):
