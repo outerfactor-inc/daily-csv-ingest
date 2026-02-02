@@ -35,7 +35,7 @@ class handler(BaseHTTPRequestHandler):
                 self.wfile.write(out)
                 return
 
-            parsed = parse_sell_through_csv(snap["csv_bytes"])
+            parsed = parse_sell_through_3e_csv(snap["csv_bytes"])
             rows = parsed.get("rows") or []
             groups = group_by_transaction(rows)
 
