@@ -43,19 +43,6 @@ class handler(BaseHTTPRequestHandler):
 
             for tn in tx_keys:
                 tx_rows = groups[tn]
-
-                # debugging aid
-                sample = tx_rows[0]
-                body["debug_row0_keys"] = sorted(list(sample.keys()))
-                body["debug_row0_sample"] = {k: sample.get(k) for k in [
-                    "billing_city",
-                    "billing_state_province",
-                    "shipping_address",
-                    "ship_to_name",
-                    "3eye_customer",
-                    "3eye_customer_id",
-                    "part_number",
-                ]}
                 
 
                 parent_fields = build_sell_through_fields(tx_rows[0])
@@ -84,6 +71,19 @@ class handler(BaseHTTPRequestHandler):
                 "transactions_found": len(groups),
                 "preview_transactions": previews,
             }
+
+            # debugging aid
+            sample = tx_rows[0]
+            body["debug_row0_keys"] = sorted(list(sample.keys()))
+            body["debug_row0_sample"] = {k: sample.get(k) for k in [
+                "billing_city",
+                "billing_state_province",
+                "shipping_address",
+                "ship_to_name",
+                "3eye_customer",
+                "3eye_customer_id",
+                "part_number",
+            ]}
 
             out = json.dumps(body, indent=2).encode("utf-8")
             self.send_response(200)
