@@ -3,7 +3,7 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 from api.sell_through.three_eye.source import get_latest_csv_snapshot
-from api.inventory.csv_parser import parse_inventory_csv  # <-- adjust if your parser lives elsewhere
+from api.sell_through.three_eye.csv_parser import parse_inventory_csv  # <-- adjust if your parser lives elsewhere
 
 
 # These are the minimum keys sf_upsert.py expects to exist in each row

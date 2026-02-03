@@ -1,54 +1,58 @@
 import csv
 import io
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 
 def normalize_header(h: str) -> str:
+    """
+    Convert CSV header to a stable snake_case key.
+    Examples:
+      'Part number' -> 'part_number'
+      'Qty On-hand' -> 'qty_on_hand'
+    """
     h = (h or "").strip().lower()
-    h = re.sub(r"[^a-z0-9]+", "_", h).strip("_")
+    # Replace non-alphanum with underscore
+    h = re.sub(r"[^a-z0-9]+", "_", h)
+    # Remove leading/trailing underscores
+    h = h.strip("_")
     return h
 
 
 def parse_int(value: Any, default: int | None = 0) -> int | None:
+    """
+    Parses integers from strings like '1', ' 2 ', '1,234', ''.
+    Returns default (0 by default) when blank.
+    """
     if value is None:
         return default
     s = str(value).strip()
     if s == "":
         return default
     s = s.replace(",", "")
+    # Some exports use '-' to mean 0
     if s == "-":
         return default
-    return int(float(s))
+    try:
+        return int(float(s))  # handles '10.0' if it ever appears
+    except ValueError:
+        raise ValueError(f"Invalid integer value: {value!r}")
 
 
-def parse_float(value: Any, default: float | None = 0.0) -> float | None:
-    if value is None:
-        return default
-    s = str(value).strip()
-    if s == "":
-        return default
-    # remove $ and commas
-    s = s.replace("$", "").replace(",", "")
-    if s == "-":
-        return default
-    return float(s)
-
-
-def parse_sell_through_3e_csv(csv_bytes: bytes, encoding: str = "utf-8") -> Dict[str, Any]:
+def parse_inventory_csv(csv_bytes: bytes, encoding: str = "utf-8") -> Dict[str, Any]:
     """
-    Parses 3E sell-through CSV into stable keys:
-      transaction_number, sku, quantity, unit_cost, extended_cost, ship_date, etc.
-
-    Only returns the fields we care about for SF upsert, but keeps room to expand later.
+    Step 1: Normalize headers
+    Step 2: Parse rows and type-cast qty fields to integers; text fields trimmed.
+    Returns dict with rows + summary for debugging.
     """
     text = csv_bytes.decode(encoding, errors="replace")
     f = io.StringIO(text)
-    reader = csv.DictReader(f)
 
+    reader = csv.DictReader(f)
     if reader.fieldnames is None:
         return {"rows": [], "summary": {"total_rows": 0, "kept": 0, "skipped": 0, "reason": "No headers"}}
 
+    # Map original headers -> normalized headers
     header_map = {orig: normalize_header(orig) for orig in reader.fieldnames}
 
     rows: List[Dict[str, Any]] = []
@@ -57,43 +61,26 @@ def parse_sell_through_3e_csv(csv_bytes: bytes, encoding: str = "utf-8") -> Dict
 
     for i, raw in enumerate(reader, start=1):
         try:
+            # Normalize keys
             rec = {header_map[k]: (v.strip() if isinstance(v, str) else v) for k, v in raw.items()}
 
-            txn = (rec.get("transaction_number") or "").strip()
-            sku = (rec.get("part_number") or "").strip()
-
-            if not txn or not sku:
+            # Required field
+            part_number = (rec.get("part_number") or "").strip()
+            if not part_number:
                 skipped += 1
                 continue
 
-            qty = parse_int(rec.get("quantity"), default=0) or 0
-            unit_cost = parse_float(rec.get("unit_cost"), default=0.0) or 0.0
+            # Type-cast integer fields (default 0 if blank)
+            rec["qty_on_hand"] = parse_int(rec.get("qty_on_hand"), default=0)
+            rec["qty_available"] = parse_int(rec.get("qty_available"), default=0)
+            rec["qty_committed"] = parse_int(rec.get("qty_committed"), default=0)
 
-            # Prefer file’s Extended Cost if present; otherwise compute.
-            ext_cost_raw = rec.get("extended_cost")
-            if ext_cost_raw is None or str(ext_cost_raw).strip() == "":
-                extended_cost = float(qty) * float(unit_cost)
-            else:
-                extended_cost = parse_float(ext_cost_raw, default=float(qty) * float(unit_cost)) or 0.0
+            # Clean text fields
+            rec["part_number"] = part_number
+            if "description" in rec and rec["description"] is not None:
+                rec["description"] = str(rec["description"]).strip()
 
-            rows.append({
-                "ship_date": (rec.get("ship_date") or "").strip(),
-                "transaction_number": txn,
-                "quantity": qty,
-                "sku": sku,
-                "description": (rec.get("description") or "").strip(),
-                "unit_cost": unit_cost,
-                "extended_cost": extended_cost,
-
-                # keep these around for later if needed
-                "purchase_order": (rec.get("purchase_order") or "").strip(),
-                "bill_to_customer_name": (rec.get("bill_to_customer_name") or "").strip(),
-                "shipping_city": (rec.get("shipping_city") or "").strip(),
-                "shipping_state_province": (rec.get("shipping_state_province") or "").strip(),
-                "shipping_zip": (rec.get("shipping_zip") or "").strip(),
-                "tracking_numbers": (rec.get("tracking_numbers") or "").strip(),
-                "vendor_quote": (rec.get("3e_vendor_quote") or rec.get("3e_vendor_quote_") or "").strip(),
-            })
+            rows.append(rec)
 
         except Exception as e:
             skipped += 1
