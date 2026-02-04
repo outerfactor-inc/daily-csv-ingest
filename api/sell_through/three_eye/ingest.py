@@ -26,7 +26,12 @@ class handler(BaseHTTPRequestHandler):
             qs = parse_qs(urlparse(self.path).query)
 
             # default safe behavior
-            limit_tx = int(qs.get("limitTx", ["1"])[0])         # number of transactions to process
+            # limitTx is optional:
+            # - omitted => process ALL transactions
+            # - provided => process only that many
+            limit_tx_raw = qs.get("limitTx", [None])[0]
+            limit_tx = int(limit_tx_raw) if limit_tx_raw not in (None, "", "0") else None
+            # number of transactions to process
             do_write = qs.get("writeSF", ["0"])[0] == "1"
             dry_run = qs.get("dryRun", ["1"])[0] == "1"
             sf_test = qs.get("sfTest", ["0"])[0] == "1"
@@ -43,7 +48,10 @@ class handler(BaseHTTPRequestHandler):
             parsed = parse_sell_through_3e_csv(snap["csv_bytes"])
             rows = parsed.get("rows") or []
             groups = group_by_transaction(rows)
-            tx_keys = list(groups.keys())[:limit_tx]
+            tx_keys = list(groups.keys())
+            if limit_tx is not None:
+                tx_keys = tx_keys[:limit_tx]
+
 
             # build preview
             previews = []
