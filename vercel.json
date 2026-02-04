@@ -7,7 +7,7 @@
     },
     {
       "path": "api/sell_through/three_eye/ingest?writeSF=1&dryRun=0",
-      "schedule": "42 08 * * *"
+      "schedule": "42 8 * * *"
     }
   ]
 }
