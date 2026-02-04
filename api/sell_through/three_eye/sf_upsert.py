@@ -104,17 +104,27 @@ def build_sell_through_fields(row: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+# def build_sell_through_line_fields(row: Dict[str, Any]) -> Dict[str, Any]:
+#     """
+#     Maps one CSV row into Sell_Through_Line__c fields (except lookups).
+#     """
+#     return {
+#         "Quantity__c": parse_int(row.get("quantity")),
+#         "Unit_Cost__c": parse_decimal(row.get("unit_cost")),
+#         "Extended_Cost__c": parse_decimal(row.get("extended_cost")),
+#         # Optional: store raw SKU if you want it on the line object:
+#         # "SKU__c": (row.get("part_number") or "").strip() or None,
+#     }
+
 def build_sell_through_line_fields(row: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Maps one CSV row into Sell_Through_Line__c fields (except lookups).
-    """
+    sku = (row.get("part_number") or row.get("sku") or "").strip() or None
     return {
+        "SKU__c": sku,
         "Quantity__c": parse_int(row.get("quantity")),
         "Unit_Cost__c": parse_decimal(row.get("unit_cost")),
         "Extended_Cost__c": parse_decimal(row.get("extended_cost")),
-        # Optional: store raw SKU if you want it on the line object:
-        # "SKU__c": (row.get("part_number") or "").strip() or None,
     }
+
 
 
 # ----------------------------
