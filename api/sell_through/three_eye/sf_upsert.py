@@ -91,6 +91,7 @@ def build_sell_through_fields(row: Dict[str, Any]) -> Dict[str, Any]:
 
         "CSV_Shipping_Address__c": (row.get("shipping_address") or "").strip() or None,
         "Ship_to_Customer__c": (row.get("ship_to_name") or "").strip() or None,
+        "Tracking_Numbers__c": (row.get("tracking_numbers") or "").strip() or None,
 
         # Shipping compound address fields
         "Shipping_Address__City__s": (row.get("shipping_city") or "").strip() or None,
@@ -299,3 +300,4 @@ def upsert_transaction_group(
         },
         "line_results_preview": line_results[:5],
     }
+
