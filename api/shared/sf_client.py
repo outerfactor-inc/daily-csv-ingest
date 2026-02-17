@@ -15,11 +15,26 @@ def sf_query(instance_url: str, access_token: str, soql: str):
     r.raise_for_status()
     return r.json()
 
+# def sf_create(instance_url: str, access_token: str, sobject: str, payload: dict):
+#     url = f"{instance_url}/services/data/{API_VERSION}/sobjects/{sobject}/"
+#     r = requests.post(url, headers=_headers(access_token), json=payload, timeout=30)
+#     r.raise_for_status()
+#     return r.json()
+
 def sf_create(instance_url: str, access_token: str, sobject: str, payload: dict):
     url = f"{instance_url}/services/data/{API_VERSION}/sobjects/{sobject}/"
     r = requests.post(url, headers=_headers(access_token), json=payload, timeout=30)
-    r.raise_for_status()
+
+    if not r.ok:
+        # Surface Salesforce's actual error message(s)
+        try:
+            details = r.json()
+        except Exception:
+            details = r.text
+        raise Exception(f"SF create failed ({r.status_code}) on {sobject}: {details}")
+
     return r.json()
+
 
 def sf_update(instance_url: str, access_token: str, sobject: str, record_id: str, payload: dict):
     url = f"{instance_url}/services/data/{API_VERSION}/sobjects/{sobject}/{quote(record_id)}"
