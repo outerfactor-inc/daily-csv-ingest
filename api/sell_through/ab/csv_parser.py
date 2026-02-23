@@ -1,20 +1,20 @@
 import csv
 import io
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 def normalize_header(h: str) -> str:
     h = (h or "").strip().lower()
     h = re.sub(r"[^a-z0-9]+", "_", h).strip("_")
     return h
 
-def parse_int(v: Any) -> int | None:
+def parse_int(v: Any) -> Optional[int]:
     if v is None: return None
     s = str(v).strip().replace(",", "")
     if not s: return None
     return int(float(s))
 
-def parse_decimal(v: Any) -> float | None:
+def parse_decimal(v: Any) -> Optional[float]:
     if v is None: return None
     s = str(v).strip().replace("$", "").replace(",", "")
     if not s: return None

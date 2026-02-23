@@ -3,34 +3,31 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 from api.sell_through.ab.source import get_latest_csv_snapshot
-from api.sell_through.ab.csv_parser import parse_ab_sell_through_csv  # <-- adjust if your parser lives elsewhere
+from api.sell_through.ab.csv_parser import parse_ab_sell_through_csv
 
 
 # These are the minimum keys sf_upsert.py expects to exist in each row
 REQUIRED_KEYS = [
     "transaction_number",
-    "part_number",
+    "sku",
     "quantity",
     "unit_cost",
     "extended_cost",
 ]
 
-# Optional but used for parent mapping (nice to confirm)
+# Optional AB keys that should usually exist
 PARENT_KEYS = [
     "ship_date",
-    "purchase_order",
-    "bill_to_customer_name",
-    "billing_city",
-    "billing_state_province",
-    "shipping_address",
-    "ship_to_name",
-    "shipping_city",
-    "shipping_state_province",
-    "shipping_zip",
-    "3eye_customer",
-    "3eye_customer_id",
+    "distributor_customer",
+    "distributor_customer_id",
+    "bill_to_customer",
+    "ship_street",
+    "ship_street2",
+    "ship_attention",
+    "ship_city",
+    "ship_state",
+    "ship_zip",
     "end_user",
-    "end_user_id",
 ]
 
 
@@ -50,7 +47,7 @@ class handler(BaseHTTPRequestHandler):
                 return
 
             csv_bytes = snap["csv_bytes"]
-            parsed = parse_ab_sell_through_csv(csv_bytes)  # your parser already normalizes headers
+            parsed = parse_ab_sell_through_csv(csv_bytes)
 
             rows = parsed.get("rows") or []
             row0 = rows[0] if rows else {}
