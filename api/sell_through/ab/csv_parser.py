@@ -165,7 +165,7 @@ def _parse_rows(raw_rows: List[List[str]], source_format: str) -> Dict[str, Any]
             cols = (cols + [""] * 18)[:18]
 
             out = {
-                "distributor_customer": cols[0].strip(),
+                "end_user": cols[0].strip(),
                 "ship_street": cols[1].strip(),
                 "ship_street2": cols[2].strip(),
                 "ship_attention": cols[3].strip(),
@@ -181,7 +181,7 @@ def _parse_rows(raw_rows: List[List[str]], source_format: str) -> Dict[str, Any]
                 "extended_cost": parse_decimal(cols[13]),
                 "distributor_customer_id": cols[14].strip(),
                 # cols[15] ignored
-                "end_user": cols[16].strip(),
+                "distributor_customer": cols[16].strip(),
                 "bill_to_customer": cols[17].strip(),
             }
 
