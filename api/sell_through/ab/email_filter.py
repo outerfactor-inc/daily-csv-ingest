@@ -20,7 +20,7 @@ def find_latest_ab_sell_through_email(token: str) -> Dict[str, Any]:
     subject_contains = _norm(os.environ.get("SELL_THROUGH_MAIL_SUBJECT_AB"))
     from_filter = _norm(os.environ.get("SELL_THROUGH_MAIL_FROM_AB"))
     att_name_contains = _norm(os.environ.get("ATTACHMENT_NAME_CONTAINS_AB", ".csv"))
-    top = int(os.environ.get("SELL_THROUGH_AB_MAX_MESSAGES", "100"))
+    top = int(os.environ.get("SELL_THROUGH_AB_MAX_MESSAGES", "500"))
 
     messages = list_recent_messages(token, mailbox, top=top)
 
