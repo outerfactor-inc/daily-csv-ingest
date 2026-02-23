@@ -31,6 +31,14 @@ def graph_get(token: str, path: str, params: Optional[dict] = None) -> Dict[str,
     return r.json()
 
 
+def graph_get_bytes(token: str, path: str, params: Optional[dict] = None) -> bytes:
+    headers = {"Authorization": f"Bearer {token}"}
+    url = f"{GRAPH}{path}"
+    r = requests.get(url, headers=headers, params=params, timeout=30)
+    r.raise_for_status()
+    return r.content
+
+
 def list_recent_messages(token: str, mailbox_user: str, top: int = 100) -> list[dict]:
     params = {
         "$top": top,
@@ -47,6 +55,22 @@ def list_attachments(token: str, mailbox_user: str, msg_id: str) -> list[dict]:
 def get_attachment_bytes(token: str, mailbox_user: str, msg_id: str, att_id: str) -> bytes:
     att = graph_get(token, f"/users/{mailbox_user}/messages/{msg_id}/attachments/{att_id}")
     b64 = att.get("contentBytes")
-    if not b64:
-        raise ValueError("Attachment has no contentBytes (not a file attachment?)")
-    return base64.b64decode(b64)
+    if b64:
+        return base64.b64decode(b64)
+
+    # Some attachment payloads omit contentBytes; fetch raw bytes via /$value.
+    # This works for normal file attachments and avoids false failures.
+    try:
+        raw = graph_get_bytes(token, f"/users/{mailbox_user}/messages/{msg_id}/attachments/{att_id}/$value")
+        if raw:
+            return raw
+    except Exception:
+        pass
+
+    att_type = att.get("@odata.type")
+    att_name = att.get("name")
+    att_content_type = att.get("contentType")
+    raise ValueError(
+        "Attachment has no content bytes and /$value fetch failed "
+        f"(type={att_type}, name={att_name}, contentType={att_content_type})."
+    )

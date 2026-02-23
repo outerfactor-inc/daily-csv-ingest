@@ -39,7 +39,16 @@ def find_latest_ab_sell_through_email(token: str) -> Dict[str, Any]:
             continue
 
         atts = list_attachments(token, mailbox, msg["id"])
-        matching = [a for a in atts if att_name_contains in _norm(a.get("name"))]
+        matching = []
+        for a in atts:
+            name = _norm(a.get("name"))
+            if att_name_contains and att_name_contains not in name:
+                continue
+            odata_type = (a.get("@odata.type") or "").lower()
+            # Prefer true file attachments; skip item/reference attachments.
+            if odata_type and "fileattachment" not in odata_type:
+                continue
+            matching.append(a)
         if not matching:
             continue
 
