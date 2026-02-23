@@ -43,32 +43,77 @@ def parse_ship_date(v: Any) -> str:
 
     return s
 
-def parse_ab_sell_through_csv(csv_bytes: bytes, encoding: str = "utf-8") -> Dict[str, Any]:
-    text = csv_bytes.decode(encoding, errors="replace")
-    f = io.StringIO(text)
-    reader = csv.reader(f)
+
+def _is_xls_bytes(data: bytes) -> bool:
+    # OLE2 Compound File header used by legacy .xls
+    return data.startswith(b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1")
+
+
+def _coerce_cell(v: Any) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
+    return str(v).strip()
+
+
+def _read_csv_rows(data: bytes, encoding: str) -> List[List[str]]:
+    text = data.decode(encoding, errors="replace")
+    return [[_coerce_cell(c) for c in row] for row in csv.reader(io.StringIO(text))]
+
+
+def _read_xls_rows(data: bytes) -> List[List[str]]:
+    try:
+        import xlrd  # type: ignore
+    except ImportError as exc:
+        raise RuntimeError("XLS parsing requires xlrd. Install dependencies from requirements.txt.") from exc
+
+    wb = xlrd.open_workbook(file_contents=data)
+    if wb.nsheets < 1:
+        return []
+
+    sheet = wb.sheet_by_index(0)
+    rows: List[List[str]] = []
+    for r in range(sheet.nrows):
+        row: List[str] = []
+        for c in range(sheet.ncols):
+            cell = sheet.cell(r, c)
+            if cell.ctype == xlrd.XL_CELL_DATE:
+                dt = xlrd.xldate_as_datetime(cell.value, wb.datemode)
+                row.append(dt.strftime("%m/%d/%Y"))
+            else:
+                row.append(_coerce_cell(cell.value))
+        rows.append(row)
+    return rows
+
+
+def _parse_rows(raw_rows: List[List[str]], source_format: str) -> Dict[str, Any]:
+    if not raw_rows:
+        return {
+            "rows": [],
+            "summary": {
+                "total_rows": 0,
+                "kept": 0,
+                "skipped": 0,
+                "reason": "Empty file",
+                "source_format": source_format,
+            },
+        }
+
+    first = raw_rows[0]
+    looks_like_header = any("transaction" in (c or "").lower() for c in first)
 
     rows_out: List[Dict[str, Any]] = []
     skipped = 0
     errors: List[str] = []
 
-    # Read first row to decide if header or data
-    first = next(reader, None)
-    if first is None:
-        return {"rows": [], "summary": {"total_rows": 0, "kept": 0, "skipped": 0, "reason": "Empty file"}}
-
-    # If it looks like a header row, use DictReader from scratch
-    looks_like_header = any("transaction" in (c or "").lower() for c in first)
-    f.seek(0)
-
     if looks_like_header:
-        dict_reader = csv.DictReader(f)
-        fieldnames = dict_reader.fieldnames or []
-        header_map = {h: normalize_header(h) for h in fieldnames}
+        header_map = {h: normalize_header(h) for h in first}
 
-        for i, raw in enumerate(dict_reader, start=1):
+        for i, row in enumerate(raw_rows[1:], start=1):
             try:
-                rec = {header_map[k]: (v.strip() if isinstance(v, str) else v) for k, v in raw.items()}
+                row = (row + [""] * len(first))[:len(first)]
+                rec = {header_map[first[idx]]: row[idx] for idx in range(len(first))}
 
                 # Normalize to the keys we want (AB-specific canonical keys)
                 out = {
@@ -101,17 +146,20 @@ def parse_ab_sell_through_csv(csv_bytes: bytes, encoding: str = "utf-8") -> Dict
                 skipped += 1
                 errors.append(f"Row {i}: {e}")
 
-        summary = {
-            "total_rows": dict_reader.line_num - 1 if dict_reader.line_num else 0,
-            "kept": len(rows_out),
-            "skipped": skipped,
-            "normalized_headers": header_map,
-            "errors_preview": errors[:5],
+        return {
+            "rows": rows_out,
+            "summary": {
+                "total_rows": max(len(raw_rows) - 1, 0),
+                "kept": len(rows_out),
+                "skipped": skipped,
+                "normalized_headers": header_map,
+                "errors_preview": errors[:5],
+                "source_format": source_format,
+                "mode": "header",
+            },
         }
-        return {"rows": rows_out, "summary": summary}
 
-    # Otherwise: positional CSV (your 1..18 list)
-    for i, cols in enumerate(reader, start=1):
+    for i, cols in enumerate(raw_rows, start=1):
         try:
             # pad to length 18
             cols = (cols + [""] * 18)[:18]
@@ -149,10 +197,22 @@ def parse_ab_sell_through_csv(csv_bytes: bytes, encoding: str = "utf-8") -> Dict
     return {
         "rows": rows_out,
         "summary": {
-            "total_rows": i if "i" in locals() else 0,
+            "total_rows": len(raw_rows),
             "kept": len(rows_out),
             "skipped": skipped,
             "errors_preview": errors[:5],
             "mode": "positional",
+            "source_format": source_format,
         },
     }
+
+
+def parse_ab_sell_through_csv(
+    csv_bytes: bytes,
+    encoding: str = "utf-8",
+    attachment_name: Optional[str] = None,
+) -> Dict[str, Any]:
+    name = (attachment_name or "").lower()
+    if name.endswith(".xls") or _is_xls_bytes(csv_bytes):
+        return _parse_rows(_read_xls_rows(csv_bytes), source_format="xls")
+    return _parse_rows(_read_csv_rows(csv_bytes, encoding=encoding), source_format="csv")
