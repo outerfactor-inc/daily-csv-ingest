@@ -1,10 +1,10 @@
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from api.shared.graph_mail_base import list_attachments, list_recent_messages
 
 
-def _norm(s: str | None) -> str:
+def _norm(s: Optional[str]) -> str:
     return (s or "").strip().lower()
 
 
@@ -19,7 +19,7 @@ def find_latest_ab_sell_through_email(token: str) -> Dict[str, Any]:
     mailbox = os.environ.get("TARIN_MAILBOX") or os.environ["TARIN_MAILBOX"]
     subject_contains = _norm(os.environ.get("SELL_THROUGH_MAIL_SUBJECT_AB"))
     from_filter = _norm(os.environ.get("SELL_THROUGH_MAIL_FROM_AB"))
-    att_name_contains = _norm(os.environ.get("ATTACHMENT_NAME_CONTAINS_AB", ".csv"))
+    att_name_contains = _norm(os.environ.get("ATTACHMENT_NAME_CONTAINS_AB", ".xls"))
     top = int(os.environ.get("SELL_THROUGH_AB_MAX_MESSAGES", "500"))
 
     messages = list_recent_messages(token, mailbox, top=top)

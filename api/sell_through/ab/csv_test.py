@@ -46,8 +46,9 @@ class handler(BaseHTTPRequestHandler):
                 self.wfile.write(out)
                 return
 
-            csv_bytes = snap["csv_bytes"]
-            parsed = parse_ab_sell_through_csv(csv_bytes)
+            file_bytes = snap["csv_bytes"]
+            attachment_name = (snap.get("attachment") or {}).get("name")
+            parsed = parse_ab_sell_through_csv(file_bytes, attachment_name=attachment_name)
 
             rows = parsed.get("rows") or []
             row0 = rows[0] if rows else {}
@@ -60,6 +61,7 @@ class handler(BaseHTTPRequestHandler):
                 "matched": True,
                 "attachment": snap.get("attachment"),
                 "csv_bytes_len": snap.get("csv_bytes_len"),
+                "attachment_name": attachment_name,
                 "summary": parsed.get("summary"),
                 "row_count": len(rows),
                 "required_keys_missing": missing_required,
