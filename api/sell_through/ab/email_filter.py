@@ -86,5 +86,5 @@ def find_latest_ab_sell_through_email(token: str) -> Dict[str, Any]:
             "MAIL_FROM": from_filter or None,
             "ATTACHMENT_NAME_CONTAINS": att_name_contains or None,
         },
-        "subjects_preview": [m.get("subject") for m in messages[:15]],
+        "subjects_preview": [m.get("subject") for m in messages[:100]],
     }
