@@ -16,7 +16,7 @@ def _get_addr(msg: dict, field: str) -> str:
 
 
 def find_latest_ab_sell_through_email(token: str) -> Dict[str, Any]:
-    mailbox = os.environ.get("TARIN_MAILBOX") or os.environ["TARIN_MAILBOX"]
+    mailbox = os.environ.get("MAILBOX_USER") or os.environ["MAILBOX_USER"]
     subject_contains = _norm(os.environ.get("SELL_THROUGH_MAIL_SUBJECT_AB"))
     from_filter = _norm(os.environ.get("SELL_THROUGH_MAIL_FROM_AB"))
     att_name_contains = _norm(os.environ.get("ATTACHMENT_NAME_CONTAINS_AB", ".xls"))
