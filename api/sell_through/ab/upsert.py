@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import datetime as dt
 from decimal import Decimal, InvalidOperation
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+
+from api.shared.sf_client import sf_create, sf_query, sf_update
 
 
 def parse_date(value: Any) -> Optional[str]:
@@ -92,4 +94,172 @@ def build_sell_through_line_fields(row: Dict[str, Any]) -> Dict[str, Any]:
         "Quantity__c": parse_int(row.get("quantity")),
         "Unit_Cost__c": parse_decimal(row.get("unit_cost")),
         "Extended_Cost__c": parse_decimal(row.get("extended_cost")),
+    }
+
+
+def _escape_soql_literal(s: str) -> str:
+    return (s or "").replace("\\", "\\\\").replace("'", "\\'")
+
+
+def get_sell_through_id_by_transaction(
+    instance_url: str,
+    access_token: str,
+    transaction_number: str,
+) -> Optional[str]:
+    tn = _escape_soql_literal(transaction_number)
+    soql = f"SELECT Id FROM Sell_Through__c WHERE Transaction_Number__c = '{tn}' LIMIT 1"
+    res = sf_query(instance_url, access_token, soql)
+    recs = res.get("records", [])
+    return recs[0]["Id"] if recs else None
+
+
+def get_product_id_by_sku(
+    instance_url: str,
+    access_token: str,
+    sku: str,
+) -> Optional[str]:
+    sku = (sku or "").strip()
+    if not sku:
+        return None
+    s = _escape_soql_literal(sku)
+    soql = f"SELECT Id FROM Product2 WHERE StockKeepingUnit = '{s}' LIMIT 1"
+    res = sf_query(instance_url, access_token, soql)
+    recs = res.get("records", [])
+    return recs[0]["Id"] if recs else None
+
+
+def get_line_id_by_parent_and_sku(
+    instance_url: str,
+    access_token: str,
+    sell_through_id: str,
+    sku: str,
+) -> Optional[str]:
+    s = _escape_soql_literal(sku)
+    q = (
+        "SELECT Id FROM Sell_Through_Line__c "
+        f"WHERE Sell_Through__c = '{sell_through_id}' AND SKU__c = '{s}' "
+        "LIMIT 1"
+    )
+    res = sf_query(instance_url, access_token, q)
+    recs = res.get("records", [])
+    return recs[0]["Id"] if recs else None
+
+
+def upsert_sell_through(
+    instance_url: str,
+    access_token: str,
+    fields: Dict[str, Any],
+) -> Dict[str, Any]:
+    tn = (fields.get("Transaction_Number__c") or "").strip()
+    if not tn:
+        raise ValueError("Sell_Through row missing Transaction_Number__c")
+
+    existing_id = get_sell_through_id_by_transaction(instance_url, access_token, tn)
+    payload = {k: v for k, v in fields.items() if v is not None}
+
+    if existing_id:
+        sf_update(instance_url, access_token, "Sell_Through__c", existing_id, payload)
+        return {"id": existing_id, "action": "updated"}
+
+    created = sf_create(instance_url, access_token, "Sell_Through__c", payload)
+    return {"id": created["id"], "action": "created"}
+
+
+def upsert_sell_through_line(
+    instance_url: str,
+    access_token: str,
+    sell_through_id: str,
+    sku: str,
+    product_id: Optional[str],
+    fields: Dict[str, Any],
+) -> Dict[str, Any]:
+    sku = (sku or "").strip()
+    if not sku:
+        raise ValueError("Missing sku for sell through line")
+
+    existing_id = get_line_id_by_parent_and_sku(
+        instance_url, access_token, sell_through_id, sku
+    )
+
+    if existing_id:
+        update_payload = {
+            "Quantity__c": fields.get("Quantity__c"),
+            "Unit_Cost__c": fields.get("Unit_Cost__c"),
+            "Extended_Cost__c": fields.get("Extended_Cost__c"),
+        }
+        update_payload = {k: v for k, v in update_payload.items() if v is not None}
+        sf_update(
+            instance_url,
+            access_token,
+            "Sell_Through_Line__c",
+            existing_id,
+            update_payload,
+        )
+        return {"id": existing_id, "action": "updated"}
+
+    create_payload = {k: v for k, v in fields.items() if v is not None}
+    create_payload["Sell_Through__c"] = sell_through_id
+    create_payload["SKU__c"] = sku
+    if product_id:
+        create_payload["Product__c"] = product_id
+
+    created = sf_create(instance_url, access_token, "Sell_Through_Line__c", create_payload)
+    return {"id": created["id"], "action": "created"}
+
+
+def upsert_transaction_group(
+    instance_url: str,
+    access_token: str,
+    rows: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    if not rows:
+        return {"ok": True, "note": "No rows"}
+
+    parent_fields = build_sell_through_fields(rows[0])
+    tn = parent_fields.get("Transaction_Number__c")
+
+    parent_result = upsert_sell_through(instance_url, access_token, parent_fields)
+    parent_id = parent_result["id"]
+
+    created = updated = skipped = errors = 0
+    error_preview = []
+    line_results = []
+
+    for r in rows:
+        try:
+            sku = (r.get("sku") or "").strip()
+            if not sku:
+                skipped += 1
+                continue
+
+            product_id = get_product_id_by_sku(instance_url, access_token, sku)
+            line_fields = build_sell_through_line_fields(r)
+            lr = upsert_sell_through_line(
+                instance_url, access_token, parent_id, sku, product_id, line_fields
+            )
+
+            line_results.append({"sku": sku, **lr})
+            if lr["action"] == "created":
+                created += 1
+            else:
+                updated += 1
+        except Exception as e:
+            errors += 1
+            if len(error_preview) < 5:
+                error_preview.append(
+                    {"transaction": tn, "sku": r.get("sku"), "error": str(e)}
+                )
+
+    return {
+        "ok": True,
+        "transaction_number": tn,
+        "sell_through": parent_result,
+        "lines": {
+            "created": created,
+            "updated": updated,
+            "skipped": skipped,
+            "errors": errors,
+            "error_preview": error_preview,
+        },
+        "line_results_preview": line_results[:5],
     }
