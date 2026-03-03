@@ -85,6 +85,7 @@ def build_sell_through_fields(row: Dict[str, Any]) -> Dict[str, Any]:
         "Distributor_Customer__c": (row.get("distributor_customer") or "").strip() or None,
         "Distributor_Customer_ID__c": (row.get("distributor_customer_id") or "").strip() or None,
         "Distributor_End_User__c": (row.get("end_user") or "").strip() or None,
+        "Distributor_Account__c": "001Vr00000g6JNzIAM",  # "AB Distributing" (hardcoded for AB CSV uploads)
     }
 
 
