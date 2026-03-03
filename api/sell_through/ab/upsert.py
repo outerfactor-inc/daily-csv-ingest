@@ -78,6 +78,7 @@ def build_sell_through_fields(row: Dict[str, Any]) -> Dict[str, Any]:
         "Ship_to_Customer__c": (
             (row.get("end_user") or row.get("ship_attention") or "").strip() or None
         ),
+        "Shipping_Address__Street__s": (row.get("ship_street") or "").strip() or None,
         "Shipping_Address__City__s": (row.get("ship_city") or "").strip() or None,
         "Shipping_Address__StateCode__s": (row.get("ship_state") or "").strip() or None,
         "Shipping_Address__PostalCode__s": (row.get("ship_zip") or "").strip() or None,
