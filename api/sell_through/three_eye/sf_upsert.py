@@ -102,6 +102,7 @@ def build_sell_through_fields(row: Dict[str, Any]) -> Dict[str, Any]:
         "Distributor_Customer_ID__c": (row.get("3eye_customer_id") or "").strip() or None,
         "Distributor_End_User__c": (row.get("end_user") or "").strip() or None,
         "Distributor_End_User_Id__c": (row.get("end_user_id") or "").strip() or None,
+        "Distributor_Account__c": "001Vr00000dtRF9IAM",
     }
 
 
@@ -300,4 +301,5 @@ def upsert_transaction_group(
         },
         "line_results_preview": line_results[:5],
     }
+
 
