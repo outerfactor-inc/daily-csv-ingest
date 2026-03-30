@@ -1,7 +1,7 @@
 import os
 import requests
 import base64
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 GRAPH = "https://graph.microsoft.com/v1.0"
 
@@ -50,6 +50,26 @@ def list_recent_messages(token: str, mailbox_user: str, top: int = 100) -> list[
 
 def list_attachments(token: str, mailbox_user: str, msg_id: str) -> list[dict]:
     return graph_get(token, f"/users/{mailbox_user}/messages/{msg_id}/attachments").get("value", [])
+
+
+def send_mail(token: str, from_email: str, to_emails: List[str], subject: str, body: str) -> None:
+    """
+    Send a plain-text email via Microsoft Graph sendMail API.
+    """
+    payload = {
+        "message": {
+            "subject": subject,
+            "body": {"contentType": "Text", "content": body},
+            "toRecipients": [{"emailAddress": {"address": e}} for e in to_emails],
+        }
+    }
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    url = f"{GRAPH}/users/{from_email}/sendMail"
+    r = requests.post(url, headers=headers, json=payload, timeout=30)
+    r.raise_for_status()
 
 
 def get_attachment_bytes(token: str, mailbox_user: str, msg_id: str, att_id: str) -> bytes:
