@@ -257,8 +257,16 @@ def upsert_transaction_group(
     parent_fields = build_sell_through_fields(rows[0])
     tn = parent_fields.get("Transaction_Number__c")
 
-    parent_result = upsert_sell_through(instance_url, access_token, parent_fields)
-    parent_id = parent_result["id"]
+    try:
+        parent_result = upsert_sell_through(instance_url, access_token, parent_fields)
+        parent_id = parent_result["id"]
+    except Exception as e:
+        return {
+            "ok": False,
+            "transaction_number": tn,
+            "error": str(e),
+            "note": "Parent upsert failed; all lines skipped",
+        }
 
     created = updated = skipped = errors = 0
     error_preview = []

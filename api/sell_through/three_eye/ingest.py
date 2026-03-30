@@ -92,15 +92,20 @@ class handler(BaseHTTPRequestHandler):
                 access_token = tok["access_token"]
 
                 results = []
+                tx_errors = []
                 for tn in tx_keys:
-                    results.append(
-                        upsert_transaction_group(instance_url, access_token, groups[tn])
-                    )
+                    try:
+                        results.append(
+                            upsert_transaction_group(instance_url, access_token, groups[tn])
+                        )
+                    except Exception as e:
+                        tx_errors.append({"transaction_number": tn, "error": str(e)})
 
                 body["sf_write"] = {
                     "limitTx": limit_tx,
                     "written_transactions": len(results),
                     "results_preview": results[:3],
+                    "transaction_errors": tx_errors,
                 }
             else:
                 body["sf_write"] = {
