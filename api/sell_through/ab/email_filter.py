@@ -32,7 +32,7 @@ def find_latest_ab_sell_through_email(token: str) -> Dict[str, Any]:
         from_addr = _get_addr(msg, "from")
         sender_addr = _get_addr(msg, "sender")
 
-        if subject_contains and subject_contains not in subj:
+        if subject_contains and subject_contains != subj:
             continue
 
         if from_filter and (from_filter != from_addr and from_filter != sender_addr):

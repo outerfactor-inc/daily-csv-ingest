@@ -10,6 +10,7 @@ from api.sell_through.ab.upsert import (
     upsert_transaction_group,
 )
 from api.shared.sf_auth import get_salesforce_token
+from api.shared.graph_mail_base import get_ms_token, send_mail
 
 
 def group_by_transaction(rows: list[dict]) -> dict[str, list[dict]]:
@@ -20,6 +21,45 @@ def group_by_transaction(rows: list[dict]) -> dict[str, list[dict]]:
             continue
         groups.setdefault(tn, []).append(r)
     return groups
+
+
+def _build_notify_email(summary: dict, results: list, tx_errors: list) -> str:
+    lines = []
+
+    lines.append("Summary")
+    lines.append(f"  Total Rows : {summary.get('total_rows', 'N/A')}")
+    lines.append(f"  Kept       : {summary.get('kept', 'N/A')}")
+    lines.append(f"  Skipped    : {summary.get('skipped', 'N/A')}")
+    lines.append("")
+
+    failed = []
+    for r in results:
+        if not r.get("ok", True):
+            failed.append({
+                "transaction_number": r.get("transaction_number", "Unknown"),
+                "error": r.get("error", "Unknown error"),
+            })
+        for le in r.get("lines", {}).get("error_preview", []):
+            failed.append({
+                "transaction_number": le.get("transaction", r.get("transaction_number", "Unknown")),
+                "error": f"SKU {le.get('sku', '?')}: {le.get('error', 'Unknown error')}",
+            })
+    for te in tx_errors:
+        failed.append({
+            "transaction_number": te.get("transaction_number", "Unknown"),
+            "error": te.get("error", "Unknown error"),
+        })
+
+    if failed:
+        lines.append("Skipped / Errored Sell Through Records")
+        for f in failed:
+            lines.append(f"  Skipped Sell Through: {f['transaction_number']}")
+            lines.append(f"  Error: {f['error']}")
+            lines.append("")
+    else:
+        lines.append("No errors. All transactions processed successfully.")
+
+    return "\n".join(lines)
 
 
 class handler(BaseHTTPRequestHandler):
@@ -96,16 +136,47 @@ class handler(BaseHTTPRequestHandler):
                 access_token = tok["access_token"]
 
                 results = []
+                tx_errors = []
                 for tn in tx_keys:
-                    results.append(
-                        upsert_transaction_group(instance_url, access_token, groups[tn])
-                    )
+                    try:
+                        results.append(
+                            upsert_transaction_group(instance_url, access_token, groups[tn])
+                        )
+                    except Exception as e:
+                        tx_errors.append({"transaction_number": tn, "error": str(e)})
 
                 body["sf_write"] = {
                     "limitTx": limit_tx,
                     "written_transactions": len(results),
                     "results_preview": results[:3],
+                    "transaction_errors": tx_errors,
                 }
+
+                # Send notification email
+                try:
+                    import os
+                    notify_raw = os.environ.get("SELL_THROUGH_EMAIL_NOTIFY", "")
+                    from_email = os.environ.get("MAILBOX_USER", "")
+                    to_emails = [e.strip() for e in notify_raw.split(",") if e.strip()]
+                    if to_emails and from_email:
+                        ms_token = get_ms_token()
+                        email_body = _build_notify_email(
+                            parsed.get("summary", {}),
+                            results,
+                            tx_errors,
+                        )
+                        send_mail(
+                            ms_token,
+                            from_email,
+                            to_emails,
+                            subject="AB Sell Through Ingest Report",
+                            body=email_body,
+                        )
+                        body["email_notify"] = {"sent": True, "to": to_emails}
+                    else:
+                        body["email_notify"] = {"sent": False, "reason": "Missing SELL_THROUGH_EMAIL_NOTIFY or MAILBOX_USER"}
+                except Exception as email_err:
+                    body["email_notify"] = {"sent": False, "error": str(email_err)}
             else:
                 body["sf_write"] = {
                     "limitTx": limit_tx,
