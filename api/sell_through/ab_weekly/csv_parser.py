@@ -103,7 +103,7 @@ def _parse_rows(raw_rows: List[List[str]], source_format: str) -> Dict[str, Any]
                 "quantity": parse_int(cols[5]),
                 "end_user": cols[6].strip(),
                 "ship_state": cols[8].strip(),
-                "ship_zip": cols[9].strip(),
+                "ship_zip": cols[10].strip(),
                 "transaction_number": cols[13].strip(),
             }
 
