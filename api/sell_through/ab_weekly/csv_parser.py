@@ -98,16 +98,12 @@ def _parse_rows(raw_rows: List[List[str]], source_format: str) -> Dict[str, Any]
 
             out = {
                 "distributor_customer": cols[0].strip(),
-                # cols[1], cols[2] ignored
                 "ab_sku": ab_sku,
                 "sku": sku,
-                # cols[4] skipped
                 "quantity": parse_int(cols[5]),
                 "end_user": cols[6].strip(),
-                # cols[7] ignored
                 "ship_state": cols[8].strip(),
                 "ship_zip": cols[9].strip(),
-                # cols[10], cols[11], cols[12] ignored
                 "transaction_number": cols[13].strip(),
             }
 
