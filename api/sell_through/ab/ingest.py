@@ -7,7 +7,7 @@ from api.sell_through.ab.source import get_latest_csv_snapshot
 from api.sell_through.ab.upsert import (
     build_sell_through_fields,
     build_sell_through_line_fields,
-    upsert_transaction_group,
+    upsert_all_transaction_groups,
 )
 from api.shared.sf_auth import get_salesforce_token
 from api.shared.graph_mail_base import get_ms_token, send_mail
@@ -135,15 +135,9 @@ class handler(BaseHTTPRequestHandler):
                 instance_url = tok["instance_url"]
                 access_token = tok["access_token"]
 
-                results = []
-                tx_errors = []
-                for tn in tx_keys:
-                    try:
-                        results.append(
-                            upsert_transaction_group(instance_url, access_token, groups[tn])
-                        )
-                    except Exception as e:
-                        tx_errors.append({"transaction_number": tn, "error": str(e)})
+                results, tx_errors = upsert_all_transaction_groups(
+                    instance_url, access_token, groups, tx_keys
+                )
 
                 body["sf_write"] = {
                     "limitTx": limit_tx,
