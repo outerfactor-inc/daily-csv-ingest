@@ -17,10 +17,6 @@
     {
       "path": "/api/sell_through/ab/ingest?writeSF=1&dryRun=0",
       "schedule": "0 8 1 * *"
-    },
-    {
-      "path": "/api/sell_through/ab_weekly/ingest?writeSF=1&dryRun=0",
-      "schedule": "0 4 * * 1"
     }
   ]
 }
