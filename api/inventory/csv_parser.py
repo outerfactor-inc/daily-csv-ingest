@@ -8,8 +8,8 @@ def normalize_header(h: str) -> str:
     """
     Convert CSV header to a stable snake_case key.
     Examples:
-      'Part number' -> 'part_number'
-      'Qty On-hand' -> 'qty_on_hand'
+      'Part #' -> 'part'
+      'On Hand' -> 'on_hand'
     """
     h = (h or "").strip().lower()
     # Replace non-alphanum with underscore
@@ -62,25 +62,20 @@ def parse_inventory_csv(csv_bytes: bytes, encoding: str = "utf-8") -> Dict[str, 
     for i, raw in enumerate(reader, start=1):
         try:
             # Normalize keys
-            rec = {header_map[k]: (v.strip() if isinstance(v, str) else v) for k, v in raw.items()}
+            norm = {header_map[k]: (v.strip() if isinstance(v, str) else v) for k, v in raw.items()}
 
-            # Required field
-            part_number = (rec.get("part_number") or "").strip()
-            if not part_number:
+            # Required field: Part # -> sku
+            sku = (norm.get("part") or "").strip()
+            if not sku:
                 skipped += 1
                 continue
 
-            # Type-cast integer fields (default 0 if blank)
-            rec["qty_on_hand"] = parse_int(rec.get("qty_on_hand"), default=0)
-            rec["qty_available"] = parse_int(rec.get("qty_available"), default=0)
-            rec["qty_committed"] = parse_int(rec.get("qty_committed"), default=0)
-
-            # Clean text fields
-            rec["part_number"] = part_number
-            if "description" in rec and rec["description"] is not None:
-                rec["description"] = str(rec["description"]).strip()
-
-            rows.append(rec)
+            rows.append({
+                "sku": sku,
+                "on_hand": parse_int(norm.get("on_hand"), default=0),
+                "available": parse_int(norm.get("available"), default=0),
+                "on_order": parse_int(norm.get("on_order"), default=0),
+            })
 
         except Exception as e:
             skipped += 1

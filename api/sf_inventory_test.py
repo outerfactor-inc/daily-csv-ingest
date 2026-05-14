@@ -70,7 +70,7 @@ class handler(BaseHTTPRequestHandler):
             # Optional qty overrides
             on_hand = int(qs.get("onHand", ["0"])[0])
             available = int(qs.get("available", ["0"])[0])
-            committed = int(qs.get("committed", ["0"])[0])
+            on_order = int(qs.get("onOrder", ["0"])[0])
 
             # Location from env (with fallback)
             location_name = os.environ.get("THREE_EYE_LOCATION", "3EyeWarehouse")
@@ -109,7 +109,7 @@ class handler(BaseHTTPRequestHandler):
             # 2) Check for existing Inventory__c
             loc_escaped = location_name.replace("'", "\\'")
             soql_inv = (
-                "SELECT Id, Product__c, Location_Name__c, On_Hand__c, Available__c, Committed__c "
+                "SELECT Id, Product__c, Location_Name__c, On_Hand__c, Available__c, On_Order__c "
                 f"FROM Inventory__c WHERE Product__c = '{product_id}' AND Location_Name__c = '{loc_escaped}' "
                 "LIMIT 1"
             )
@@ -126,7 +126,7 @@ class handler(BaseHTTPRequestHandler):
                     "Location_Name__c": location_name,
                     "On_Hand__c": on_hand,
                     "Available__c": available,
-                    "Committed__c": committed,
+                    "On_Order__c": on_order,
                 },
                 "soql_product": soql_prod,
                 "soql_inventory": soql_inv,
@@ -156,7 +156,7 @@ class handler(BaseHTTPRequestHandler):
                 update_payload = {
                     "On_Hand__c": on_hand,
                     "Available__c": available,
-                    "Committed__c": committed,
+                    "On_Order__c": on_order,
                 }
 
                 if do_write:

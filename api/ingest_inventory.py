@@ -108,11 +108,11 @@ class handler(BaseHTTPRequestHandler):
             row0 = rows[0] if rows else None
             if row0:
                 body["sf_preview"] = {
-                    "sku": row0["part_number"],
+                    "sku": row0["sku"],
                     "location": location_name,
-                    "On_Hand__c": row0["qty_on_hand"],
-                    "Available__c": row0["qty_available"],
-                    "Committed__c": row0["qty_committed"],
+                    "On_Hand__c": row0["on_hand"],
+                    "Available__c": row0["available"],
+                    "On_Order__c": row0["on_order"],
                 }
 
             # ----------------------------
@@ -139,11 +139,11 @@ class handler(BaseHTTPRequestHandler):
                         r = upsert_inventory_row(
                             instance_url=tok["instance_url"],
                             access_token=tok["access_token"],
-                            sku=row["part_number"],
+                            sku=row["sku"],
                             location_name=location_name,
-                            qty_on_hand=row["qty_on_hand"],
-                            qty_available=row["qty_available"],
-                            qty_committed=row["qty_committed"],
+                            on_hand=row["on_hand"],
+                            available=row["available"],
+                            on_order=row["on_order"],
                         )
                         
                         # Track outcome for reporting
@@ -157,7 +157,7 @@ class handler(BaseHTTPRequestHandler):
                     except Exception as e:
                         errors += 1
                         if len(error_preview) < 5:
-                            error_preview.append({"sku": row.get("part_number"), "error": str(e)})
+                            error_preview.append({"sku": row.get("sku"), "error": str(e)})
 
                 # Batch-level write summary
                 body["sf_batch"] = {

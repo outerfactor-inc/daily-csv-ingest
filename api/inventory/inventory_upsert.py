@@ -1,7 +1,7 @@
 from api.shared.sf_client import sf_query, sf_create, sf_update
 
 def upsert_inventory_row(instance_url: str, access_token: str, sku: str, location_name: str,
-                         qty_on_hand: int, qty_available: int, qty_committed: int):
+                         on_hand: int, available: int, on_order: int):
     # 1) Find Product2 by StockKeepingUnit (SKU)
     sku_escaped = sku.replace("'", "\\'")
     soql_product = f"SELECT Id, StockKeepingUnit FROM Product2 WHERE StockKeepingUnit = '{sku_escaped}' LIMIT 1"
@@ -23,9 +23,9 @@ def upsert_inventory_row(instance_url: str, access_token: str, sku: str, locatio
     payload = {
         "Product__c": product_id,
         "Location_Name__c": location_name,
-        "On_Hand__c": qty_on_hand,
-        "Available__c": qty_available,
-        "Committed__c": qty_committed,
+        "On_Hand__c": on_hand,
+        "Available__c": available,
+        "On_Order__c": on_order,
     }
 
     if inv_res.get("records"):
