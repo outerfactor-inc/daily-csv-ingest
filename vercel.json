@@ -2,6 +2,9 @@
   "functions": {
     "api/sell_through/ab/ingest.py": {
       "maxDuration": 300
+    },
+    "api/ingest_inventory.py": {
+      "maxDuration": 300
     }
   },
   "crons": [
