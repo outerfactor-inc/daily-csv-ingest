@@ -57,6 +57,7 @@ def parse_inventory_csv(csv_bytes: bytes, encoding: str = "utf-8") -> Dict[str, 
 
     rows: List[Dict[str, Any]] = []
     skipped = 0
+    skipped_zero_qty = 0
     errors: List[str] = []
 
     for i, raw in enumerate(reader, start=1):
@@ -70,11 +71,21 @@ def parse_inventory_csv(csv_bytes: bytes, encoding: str = "utf-8") -> Dict[str, 
                 skipped += 1
                 continue
 
+            on_hand = parse_int(norm.get("on_hand"), default=0)
+            available = parse_int(norm.get("available"), default=0)
+            on_order = parse_int(norm.get("on_order"), default=0)
+
+            # Only keep rows with positive quantity in at least one field.
+            if not (available > 0 or on_hand > 0 or on_order > 0):
+                skipped += 1
+                skipped_zero_qty += 1
+                continue
+
             rows.append({
                 "sku": sku,
-                "on_hand": parse_int(norm.get("on_hand"), default=0),
-                "available": parse_int(norm.get("available"), default=0),
-                "on_order": parse_int(norm.get("on_order"), default=0),
+                "on_hand": on_hand,
+                "available": available,
+                "on_order": on_order,
             })
 
         except Exception as e:
@@ -85,6 +96,7 @@ def parse_inventory_csv(csv_bytes: bytes, encoding: str = "utf-8") -> Dict[str, 
         "total_rows": (reader.line_num - 1) if reader.line_num else 0,
         "kept": len(rows),
         "skipped": skipped,
+        "skipped_zero_qty": skipped_zero_qty,
         "normalized_headers": header_map,
         "errors_preview": errors[:5],
     }
