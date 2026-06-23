@@ -12,5 +12,5 @@ handler = make_inventory_handler(
     location_env="ABWarehouse",
     location_default="ABWarehouse",
     distributor_label="AB",
-    require_secret=True,
+    require_secret=False,
 )

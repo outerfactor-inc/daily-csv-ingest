@@ -9,5 +9,5 @@ handler = make_inventory_handler(
     location_env="THREE_EYE_LOCATION",
     location_default="3EyeWarehouse",
     distributor_label="3Eye",
-    require_secret=True,
+    require_secret=False,
 )
