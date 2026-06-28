@@ -1,0 +1,165 @@
+import os
+import json
+from http.server import BaseHTTPRequestHandler
+from urllib.parse import urlparse, parse_qs
+
+# AB inventory: find latest AB email, download the .xls, parse into typed rows.
+from api.inventory.ab_inventory_source import get_latest_ab_inventory_snapshot
+
+# Handles Salesforce JWT auth
+from api.shared.sf_auth import get_salesforce_token
+
+# Upserts a single Inventory__c row in Salesforce (shared, distributor-agnostic)
+from api.inventory.inventory_upsert import upsert_inventory_row
+
+
+class handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        try:
+            # ----------------------------
+            # Parse query string controls
+            # ----------------------------
+            # limit   : max number of rows to process
+            # sfTest  : test Salesforce auth only (no writes)
+            # writeSF : allow writes to Salesforce
+            # dryRun  : safety flag to block writes even if writeSF=1
+            qs = parse_qs(urlparse(self.path).query)
+            limit = int(qs.get("limit", ["0"])[0])
+            sf_test = qs.get("sfTest", ["0"])[0] == "1"
+            do_write = qs.get("writeSF", ["0"])[0] == "1"
+            dry_run = qs.get("dryRun", ["1"])[0] == "1"
+
+            # --------------------------
+            # Enforce Secret Key (shared INGEST_SECRET, same as 3Eye)
+            # --------------------------
+            secret = os.environ.get("INGEST_SECRET", "")
+            key = qs.get("key", [""])[0]
+            if secret and key != secret:
+                out = json.dumps({"ok": False, "error": "Unauthorized"}).encode("utf-8")
+                self.send_response(401)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(out)
+                return
+
+            # ----------------------------------------------------
+            # Fetch the latest matching AB inventory email + .xls
+            # ----------------------------------------------------
+            snap = get_latest_ab_inventory_snapshot()
+
+            # If no email / file matched the filters, return early
+            if not snap.get("matched"):
+                out = json.dumps(snap, indent=2).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(out)
+                return
+
+            # ----------------------------
+            # Extract parsed rows
+            # ----------------------------
+            parsed = snap["parsed"] or {}
+            all_rows = parsed.get("rows") or []
+            rows = all_rows if limit <= 0 else all_rows[:limit]
+
+            # ----------------------------
+            # Build base response payload
+            # ----------------------------
+            body = {
+                "ok": True,
+                "matched": True,
+                "scanned": snap.get("scanned"),
+                "filters": snap.get("filters"),
+                "pickedMessage": snap.get("pickedMessage"),
+                "attachment": snap.get("attachment"),
+                "csv": {
+                    "bytes": snap.get("csv_bytes_len"),
+                    "summary": parsed.get("summary"),
+                    "preview_rows": rows[:1],
+                },
+            }
+
+            # ----------------------------
+            # Inventory location (env-driven; set AB_LOCATION in Vercel)
+            # ----------------------------
+            location_name = os.environ.get("AB_LOCATION", "ABWarehouse")
+
+            # ----------------------------
+            # Show what *would* be sent to Salesforce
+            # ----------------------------
+            row0 = rows[0] if rows else None
+            if row0:
+                body["sf_preview"] = {
+                    "sku": row0["sku"],
+                    "location": location_name,
+                    "On_Hand__c": row0["on_hand"],
+                    "Available__c": row0["available"],
+                    "On_Order__c": row0["on_order"],
+                }
+
+            # ----------------------------
+            # Salesforce auth test only (no data writes)
+            # ----------------------------
+            if sf_test:
+                tok = get_salesforce_token()
+                body["sf"] = {"instance_url": tok.get("instance_url")}
+
+            # ----------------------------
+            # Perform Salesforce upserts (gated by writeSF=1 and dryRun=0)
+            # ----------------------------
+            if do_write and not dry_run:
+                tok = get_salesforce_token()
+                created = updated = skipped = errors = 0
+                error_preview = []
+
+                for row in rows:
+                    try:
+                        r = upsert_inventory_row(
+                            instance_url=tok["instance_url"],
+                            access_token=tok["access_token"],
+                            sku=row["sku"],
+                            location_name=location_name,
+                            on_hand=row["on_hand"],
+                            available=row["available"],
+                            on_order=row["on_order"],
+                        )
+
+                        if r.get("action") == "created":
+                            created += 1
+                        elif r.get("action") == "updated":
+                            updated += 1
+                        else:
+                            skipped += 1
+
+                    except Exception as e:
+                        errors += 1
+                        if len(error_preview) < 5:
+                            error_preview.append({"sku": row.get("sku"), "error": str(e)})
+
+                body["sf_batch"] = {
+                    "limit": limit,
+                    "created": created,
+                    "updated": updated,
+                    "skipped": skipped,
+                    "errors": errors,
+                    "error_preview": error_preview,
+                }
+            else:
+                body["sf_batch"] = {
+                    "limit": limit,
+                    "note": "No writes performed (set writeSF=1&dryRun=0 to write).",
+                }
+
+            out = json.dumps(body, indent=2).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(out)
+
+        except Exception as e:
+            err = json.dumps({"ok": False, "error": str(e)}, indent=2).encode("utf-8")
+            self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(err)
