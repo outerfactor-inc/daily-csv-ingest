@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/sell_through/ab/ingest.py": {
-      "maxDuration": 300
+      "maxDuration": 800
     },
     "api/ingest_inventory.py": {
       "maxDuration": 300
