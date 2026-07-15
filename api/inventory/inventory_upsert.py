@@ -22,6 +22,7 @@ def upsert_inventory_row(instance_url: str, access_token: str, sku: str, locatio
 
     payload = {
         "Product__c": product_id,
+        "SKU__c": sku,
         "Location_Name__c": location_name,
         "On_Hand__c": on_hand,
         "Available__c": available,
